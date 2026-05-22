@@ -46,18 +46,20 @@ jobs:
       - name: Check cyclomatic complexity
         run: |
           uv run radon cc -n C src/ --json > /tmp/radon.json
-          HIGH=$(uv run python -c "
-          import json
-          with open('/tmp/radon.json') as f:
-              data = json.load(f)
-          high = [(k, v['name'], v['complexity']) for k, vals in data.items()
-                  for v in vals if v['rank'] in ('C', 'D', 'E', 'F')]
-          for fname, name, cc in high:
-              print(f'{fname}:{name} has CC={cc} (rank {chr(68 - (ord(max(name, 'A')) - 65) if len(name) else 0)})')
-          if high:
-              print(f'::warning::{len(high)} function(s) exceed C-complexity threshold')
-          ")
-          echo "Complexity check passed."
+          uv run python -c "
+import json, sys
+with open('/tmp/radon.json') as f:
+    data = json.load(f)
+high = [(k, v['name'], v['complexity'], v['rank']) for k, vals in data.items()
+        for v in vals if v['rank'] in ('C', 'D', 'E', 'F')]
+for fname, name, cc, rank in high:
+    print(f'{fname}:{name} has CC={cc} (rank {rank})')
+count = len(high)
+if count:
+    print(f'::warning::{count} function(s) exceed C-complexity threshold')
+    sys.exit(1)
+print('All functions within complexity budget (A-B).')
+"
 
   test:
     runs-on: ubuntu-latest
