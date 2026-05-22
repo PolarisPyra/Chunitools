@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PyCriCodecsEx.utf import UTF, UTFBuilder
 
-from src.lib.sonic_audio_tools.hca import HcaInfo
+from src.audio.codecs.hca import HcaInfo
 
 
 def retarget_acb_template(

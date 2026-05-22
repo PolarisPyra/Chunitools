@@ -6,6 +6,7 @@ import copy
 import shutil
 import tempfile
 import xml.etree.ElementTree as ET
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from src.core.images import SUPPORTED_JACKET_SOURCE_SUFFIXES, convert_jacket_ima
 from src.core.models import Chart
 from src.core.read import parse_c2s
 from src.core.write import save_chart_file, serialize_music_xml
-from src.lib.sonic_audio_tools import (
+from src.audio.codecs import (
     Afs2Entry,
     HcaEncodeError,
     build_afs2,
@@ -23,6 +24,85 @@ from src.lib.sonic_audio_tools import (
     read_hca_info,
     retarget_acb_template,
 )
+
+
+class AudioExportStrategy(ABC):
+    """Abstract strategy for exporting audio into an option folder."""
+
+    @abstractmethod
+    def export(
+        self, chart: Chart, cue_dir: Path, source: Path, hca_key: int
+    ) -> tuple[Path, Path | None]:
+        """Export audio and return (awb_path, acb_path)."""
+
+    @abstractmethod
+    def preflight(self, source: Path, hca_key: int) -> None:
+        """Validate that export can proceed; raise OptionExportError if not."""
+
+
+class DirectAwbStrategy(AudioExportStrategy):
+    """Copies an existing .awb + .acb pair directly."""
+
+    def preflight(self, source: Path, hca_key: int) -> None:
+        acb_source = source.with_suffix(".acb")
+        if not acb_source.exists() or not acb_source.is_file():
+            raise OptionExportError("AWB option export requires a sibling .acb file")
+
+    def export(
+        self, chart: Chart, cue_dir: Path, source: Path, hca_key: int
+    ) -> tuple[Path, Path | None]:
+        awb_dest = cue_dir / f"music{chart.metadata.music_id}.awb"
+        shutil.copy2(source, awb_dest)
+        acb_source = source.with_suffix(".acb")
+        acb_dest = cue_dir / f"music{chart.metadata.music_id}.acb"
+        shutil.copy2(acb_source, acb_dest)
+        return awb_dest, acb_dest
+
+
+class EncodeAudioStrategy(AudioExportStrategy):
+    """Encodes source audio (WAV/MP3/FLAC/HCA) into an AWB+ACB pair."""
+
+    def preflight(self, source: Path, hca_key: int) -> None:
+        if source.suffix.lower() != ".hca" and not hca_encoder_available():
+            raise OptionExportError(
+                "WAV/AIFF/MP3/FLAC option export requires PyCriCodecsEx for Python HCA "
+                "encoding, or an already encoded .hca/.awb source"
+            )
+        needs_ffmpeg = source.suffix.lower() in {".mp3", ".flac", ".aif", ".aiff"}
+        if needs_ffmpeg and shutil.which("ffmpeg") is None:
+            raise OptionExportError("MP3/FLAC/AIFF option export requires ffmpeg and PyCriCodecsEx")
+        if hca_key < 0:
+            raise OptionExportError("HCA key must be zero or a positive integer")
+
+    def export(
+        self, chart: Chart, cue_dir: Path, source: Path, hca_key: int
+    ) -> tuple[Path, Path | None]:
+        awb_dest = cue_dir / f"music{chart.metadata.music_id}.awb"
+        acb_dest = cue_dir / f"music{chart.metadata.music_id}.acb"
+        template_acb = _resolve_audio_template_acb(None, source)
+        with tempfile.TemporaryDirectory(prefix="chunitools-audio-") as temp_dir_raw:
+            temp_dir = Path(temp_dir_raw)
+            try:
+                hca_path = encode_source_to_hca(
+                    source, temp_dir / f"music{chart.metadata.music_id}.hca", key=hca_key,
+                )
+            except HcaEncodeError as exc:
+                raise OptionExportError(str(exc)) from exc
+            hca_info = read_hca_info(hca_path)
+            awb_data = build_afs2([Afs2Entry(id=0, data=hca_path.read_bytes())])
+            awb_dest.write_bytes(awb_data)
+            retarget_acb_template(
+                template_acb, acb_dest,
+                music_id=chart.metadata.music_id,
+                hca_info=hca_info,
+                awb_data=awb_data,
+                awb_header=extract_afs2_header(awb_data),
+            )
+        if not awb_dest.exists():
+            raise OptionExportError("Python SonicAudioTools export did not produce an AWB file")
+        if not acb_dest.exists():
+            raise OptionExportError("Python SonicAudioTools export did not produce an ACB file")
+        return awb_dest, acb_dest
 
 
 @dataclass(frozen=True)
@@ -287,6 +367,13 @@ def _export_jacket(chart: Chart, music_dir: Path, jacket_path: str | Path | None
     raise OptionExportError("jacket source must be DDS, PNG, or JPEG")
 
 
+def _resolve_audio_strategy(source: Path) -> AudioExportStrategy:
+    """Return the appropriate export strategy for the source file."""
+    if source.suffix.lower() == ".awb":
+        return DirectAwbStrategy()
+    return EncodeAudioStrategy()
+
+
 def _export_audio(
     chart: Chart,
     cue_dir: Path,
@@ -302,25 +389,10 @@ def _export_audio(
     if not source.exists() or not source.is_file():
         raise OptionExportError(f"audio source does not exist: {source}")
 
-    if source.suffix.lower() != ".awb":
-        return _encode_audio_with_sonic_tools(
-            chart,
-            cue_dir,
-            source,
-            atomcraft_project,
-            hca_key,
-        )
-
-    awb_destination = cue_dir / f"music{chart.metadata.music_id}.awb"
-    shutil.copy2(source, awb_destination)
-
-    acb_source = source.with_suffix(".acb")
-    if not acb_source.exists() or not acb_source.is_file():
-        raise OptionExportError("AWB option export requires a sibling .acb file")
-    acb_destination = cue_dir / f"music{chart.metadata.music_id}.acb"
-    shutil.copy2(acb_source, acb_destination)
-
-    return awb_destination, acb_destination
+    strategy = _resolve_audio_strategy(source)
+    if isinstance(strategy, EncodeAudioStrategy) and atomcraft_project:
+        _resolve_audio_template_acb(atomcraft_project, source)
+    return strategy.export(chart, cue_dir, source, hca_key)
 
 
 def _preflight_audio_export(
@@ -336,64 +408,10 @@ def _preflight_audio_export(
     if not source.exists() or not source.is_file():
         raise OptionExportError(f"audio source does not exist: {source}")
 
-    if source.suffix.lower() == ".awb":
-        acb_source = source.with_suffix(".acb")
-        if not acb_source.exists() or not acb_source.is_file():
-            raise OptionExportError("AWB option export requires a sibling .acb file")
-        return
-
-    if source.suffix.lower() != ".hca" and not hca_encoder_available():
-        raise OptionExportError(
-            "WAV/AIFF/MP3/FLAC option export requires PyCriCodecsEx for Python HCA "
-            "encoding, or an already encoded .hca/.awb source"
-        )
-
-    needs_ffmpeg = source.suffix.lower() in {".mp3", ".flac", ".aif", ".aiff"}
-    if needs_ffmpeg and shutil.which("ffmpeg") is None:
-        raise OptionExportError("MP3/FLAC/AIFF option export requires ffmpeg and PyCriCodecsEx")
-
-    _resolve_audio_template_acb(atomcraft_project, source)
-    if hca_key < 0:
-        raise OptionExportError("HCA key must be zero or a positive integer")
-
-
-def _encode_audio_with_sonic_tools(
-    chart: Chart,
-    cue_dir: Path,
-    source: Path,
-    atomcraft_project: str | Path | None,
-    hca_key: int,
-) -> tuple[Path, Path | None]:
-    awb_destination = cue_dir / f"music{chart.metadata.music_id}.awb"
-    acb_destination = cue_dir / f"music{chart.metadata.music_id}.acb"
-    template_acb = _resolve_audio_template_acb(atomcraft_project, source)
-    with tempfile.TemporaryDirectory(prefix="chunitools-audio-") as temp_dir_raw:
-        temp_dir = Path(temp_dir_raw)
-        try:
-            hca_path = encode_source_to_hca(
-                source,
-                temp_dir / f"music{chart.metadata.music_id}.hca",
-                key=hca_key,
-            )
-        except HcaEncodeError as exc:
-            raise OptionExportError(str(exc)) from exc
-        hca_info = read_hca_info(hca_path)
-        awb_data = build_afs2([Afs2Entry(id=0, data=hca_path.read_bytes())])
-        awb_destination.write_bytes(awb_data)
-        retarget_acb_template(
-            template_acb,
-            acb_destination,
-            music_id=chart.metadata.music_id,
-            hca_info=hca_info,
-            awb_data=awb_data,
-            awb_header=extract_afs2_header(awb_data),
-        )
-
-    if not awb_destination.exists():
-        raise OptionExportError("Python SonicAudioTools export did not produce an AWB file")
-    if not acb_destination.exists():
-        raise OptionExportError("Python SonicAudioTools export did not produce an ACB file")
-    return awb_destination, acb_destination
+    strategy = _resolve_audio_strategy(source)
+    if isinstance(strategy, EncodeAudioStrategy):
+        _resolve_audio_template_acb(atomcraft_project, source)
+    strategy.preflight(source, hca_key)
 
 
 def _resolve_audio_template_acb(

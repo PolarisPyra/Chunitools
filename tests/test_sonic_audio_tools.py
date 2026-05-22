@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.lib.sonic_audio_tools import Afs2Entry, build_afs2, parse_afs2
+from src.audio.codecs import Afs2Entry, build_afs2, parse_afs2
 
 
 def test_python_afs2_builder_round_trips_entries_with_subkey() -> None:

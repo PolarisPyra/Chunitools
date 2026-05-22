@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from PySide6.QtCore import QElapsedTimer, QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QCloseEvent, QKeyEvent, QResizeEvent
+from PySide6.QtGui import QCloseEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -37,24 +37,18 @@ from src.ui.components.play_view import PlayView3D
 from src.ui.components.radar import NoteDensityRadar
 from src.ui.components.viewport import ChartViewport
 from src.ui.view.timeline_widget import TimelineWidget
+from src.ui.window import export as export_ops
 from src.ui.window.editor_actions import NoteEditor
-from src.ui.window.export import (
-    cancel_export_all as do_cancel_export_all,
-    export_all_charts as do_export_all_charts,
-    export_current_audio as do_export_current_audio,
-    export_current_chart_image as do_export_current_chart_image,
-    open_last_export_folder as do_open_last_export_folder,
-    open_last_export_log as do_open_last_export_log,
-    open_logs_folder as do_open_logs_folder,
-)
 from src.ui.window.file_handler import FileHandler
 from src.ui.window.inspectors import (
     format_notes_summary,
     format_render_behavior,
     resolve_warning_note,
 )
+from src.ui.window.key_handler import KeyHandler
 from src.ui.window.menus import create_menu_bar
 from src.ui.window.metadata_editor import MetadataEditor
+from src.ui.window.overlay_manager import OverlayManager
 from src.ui.window.settings_handler import SettingsHandler
 from src.ui.window.status_widgets import init_status_widgets
 from src.ui.window.widgets import (
@@ -94,16 +88,20 @@ class MainWindow(QMainWindow):
 
         self.playback = PlaybackController(self)
         self.file_handler = FileHandler(self)
+        self.key_handler = KeyHandler(self)
+        self.overlay_manager = OverlayManager(self)
 
         startup_data_root = resolve_startup_data_root(settings)
         data_path = startup_data_root.path
         if startup_data_root.should_prompt:
-            prompted_path = self._prompt_for_data_root()
+            prompted_path = self.file_handler.prompt_data_root()
             if prompted_path:
                 data_path = prompted_path
 
         sounds_path = get_sounds_dir(data_path)
-        self.playback_service = PlaybackCoordinator(self.playback, str(sounds_path / "tap.wav"), data_path, self)
+        self.playback_service = PlaybackCoordinator(
+            self.playback, str(sounds_path / "tap.wav"), data_path, self
+        )
         self.playback_service.set_hitsound_volume(settings.hitsound_volume)
         self.playback_service.set_music_volume(settings.music_volume)
 
@@ -121,7 +119,7 @@ class MainWindow(QMainWindow):
         self._install_spacebar_guard()
         self._view_stack.setCurrentIndex(0)
         self._switch_view_mode(0)
-        self._position_overlays()
+        self.overlay_manager.reposition()
 
     def _open_config_dir(self) -> None:
         if not USER_CONFIG_DIR.exists():
@@ -136,7 +134,9 @@ class MainWindow(QMainWindow):
             self.songs = self.scanner.scan()
             self.playback_service.shutdown()
             sounds_path = get_sounds_dir(path)
-            self.playback_service = PlaybackCoordinator(self.playback, str(sounds_path / "tap.wav"), path, self)
+            self.playback_service = PlaybackCoordinator(
+                self.playback, str(sounds_path / "tap.wav"), path, self
+            )
             self.playback_service.set_hitsound_volume(settings.hitsound_volume)
             self.playback_service.set_music_volume(settings.music_volume)
             self.visualizer.user_seeked.disconnect()
@@ -145,9 +145,6 @@ class MainWindow(QMainWindow):
             self.play_view.user_seeked.connect(self.playback_service.seek)
             self.picker.songs = self.songs
             self.picker._populate_all_lists()
-
-    def _prompt_for_data_root(self) -> str | None:
-        return self.file_handler.prompt_data_root()
 
     def new_chart(self) -> None:
         self.file_handler.new()
@@ -179,12 +176,6 @@ class MainWindow(QMainWindow):
 
     def save_music_xml(self) -> None:
         self.file_handler.save_music_xml()
-
-    def _confirm_discard_dirty_chart(self) -> bool:
-        return self.file_handler.confirm_discard()
-
-    def _suggest_chart_filename(self) -> str:
-        return self.file_handler.suggest_filename()
 
     # ── UI Layout ──
 
@@ -291,7 +282,7 @@ class MainWindow(QMainWindow):
             self.open_folder_btn.setIcon(qta.icon("fa5s.folder", color=theme.WHITE))
             self.open_folder_btn.setIconSize(QSize(14, 14))
         self.open_folder_btn.setFixedSize(24, 24)
-        self.open_folder_btn.clicked.connect(self.open_last_export_folder)
+        self.open_folder_btn.clicked.connect(export_ops.open_last_export_folder)
         self.open_folder_btn.setVisible(settings.show_export_button)
         folder_row.addWidget(self.open_folder_btn)
 
@@ -308,7 +299,7 @@ class MainWindow(QMainWindow):
             self.open_logs_btn.setText("Logs")
             self.open_logs_btn.setFixedHeight(24)
             self.open_logs_btn.setMinimumWidth(48)
-        self.open_logs_btn.clicked.connect(self.open_logs_folder)
+        self.open_logs_btn.clicked.connect(export_ops.open_logs_folder)
         self.open_logs_btn.setVisible(settings.show_export_button)
         folder_row.addWidget(self.open_logs_btn)
         folder_row.addStretch()
@@ -451,7 +442,7 @@ class MainWindow(QMainWindow):
             self.mode_2d_action.setChecked(is_t)
         if hasattr(self, "mode_3d_action"):
             self.mode_3d_action.setChecked(not is_t)
-        QTimer.singleShot(0, self._position_overlays)
+        QTimer.singleShot(0, self.overlay_manager.reposition)
 
     # ── Connections ──
 
@@ -468,7 +459,7 @@ class MainWindow(QMainWindow):
         self.visualizer.note_place_requested.connect(self.note_editor.place_note_at)
         self.visualizer.note_size_drag_place_requested.connect(self.note_editor.place_note_at)
         self.visualizer.note_drag_place_requested.connect(self.note_editor.place_note_drag)
-        self.visualizer.resized.connect(self._position_overlays)
+        self.visualizer.resized.connect(self.overlay_manager.reposition)
         self.hitsound_volume_slider.valueChanged.connect(self.settings_handler.on_hitsound_volume)
         self.music_volume_slider.valueChanged.connect(self.settings_handler.on_music_volume)
         self.playback.pos_changed.connect(self._on_playhead_moved)
@@ -490,9 +481,13 @@ class MainWindow(QMainWindow):
             self._display_chart(chart)
             self._update_chart_metadata(chart)
             self.metadata_editor.sync_fields()
-            msg = ("Chart loaded." if self.playback_service.has_music_source
-                   else "Data-folder chart loaded read-only. No music source found." if self._chart_read_only
-                   else "Chart loaded. No music source found; set data directory or choose Audio.")
+            msg = (
+                "Chart loaded."
+                if self.playback_service.has_music_source
+                else "Data-folder chart loaded read-only. No music source found."
+                if self._chart_read_only
+                else "Chart loaded. No music source found; set data directory or choose Audio."
+            )
             self.statusBar().showMessage(msg, 5000)
             QTimer.singleShot(10, lambda: self._update_chart_warnings(chart))
         except (OSError, ValueError, UnicodeDecodeError) as exc:
@@ -535,7 +530,7 @@ class MainWindow(QMainWindow):
         self.visualizer.setFocus(Qt.FocusReason.OtherFocusReason)
         self.radar.update_chart(chart)
         self.note_inspector.setPlainText("Click a note to inspect it.")
-        self._position_overlays()
+        self.overlay_manager.reposition()
         self.visualizer.update()
         self.play_view.update()
 
@@ -543,7 +538,10 @@ class MainWindow(QMainWindow):
         total = None
         dur = self.playback.playback_end_seconds
         if dur > 0:
-            total = max(float(chart.timeline.calculate_max_measure()), chart.timeline.pos_at_time(dur))
+            total = max(
+                float(chart.timeline.calculate_max_measure()),
+                chart.timeline.pos_at_time(dur),
+            )
         self.timeline_widget.set_total_measures(total)
         self.visualizer.set_total_measures(total)
         self.play_view.set_total_measures(total)
@@ -571,19 +569,24 @@ class MainWindow(QMainWindow):
                 flat_total = 0
                 counts: dict[str, int] = {}
                 for n in self.current_chart.notes:
-                    if hasattr(n, 'steps'):
-                        flat_total += len(n.steps)
-                        for s in n.steps:
+                    steps = getattr(n, "steps", None)
+                    if steps is not None:
+                        flat_total += len(steps)
+                        for s in steps:
                             counts[s.note_type.value] = counts.get(s.note_type.value, 0) + 1
                     else:
                         flat_total += 1
                         counts[n.note_type.value] = counts.get(n.note_type.value, 0) + 1
-                html += '<br><br>'
-                html += f'<span style="color:#aaa;font-size:12px;">Total notes: ' \
-                        f'<b style="color:#fff;">{flat_total}</b></span><br>'
+                html += "<br><br>"
+                html += (
+                    f'<span style="color:#aaa;font-size:12px;">Total notes: '
+                    f'<b style="color:#fff;">{flat_total}</b></span><br>'
+                )
                 for nt in sorted(counts):
-                    html += f'<span style="color:#666;font-size:11px;">&nbsp;&nbsp;{nt}: ' \
-                            f'{counts[nt]}</span><br>'
+                    html += (
+                        f'<span style="color:#666;font-size:11px;">&nbsp;&nbsp;{nt}: '
+                        f'{counts[nt]}</span><br>'
+                    )
             self.note_inspector.setHtml(html)
             return
         self.note_inspector.setHtml(format_render_behavior(note, self.current_chart))
@@ -690,18 +693,13 @@ class MainWindow(QMainWindow):
         else:
             self.setWindowTitle("Chunitools")
 
-    def _sync_editor_fields(self, chart: Chart | None) -> None:
-        if chart and self.metadata_editor:
-            self.metadata_editor.sync_fields()
-
-    def _sync_editor_enabled(self) -> None:
-        if self.metadata_editor:
-            self.metadata_editor._sync_editor_enabled()
-        self._sync_place_mode()
-
     def _sync_place_mode(self) -> None:
         if hasattr(self, "visualizer"):
-            self.visualizer.set_editor_place_mode(not self._chart_read_only, self._editor_note_width, self._editor_note_type)
+            self.visualizer.set_editor_place_mode(
+                not self._chart_read_only, self._editor_note_width, self._editor_note_type
+            )
+
+    # ── Metadata editor delegation ──
 
     def import_audio_dialog(self) -> None:
         if self.metadata_editor:
@@ -714,24 +712,6 @@ class MainWindow(QMainWindow):
     def convert_image_to_dds_dialog(self) -> None:
         if self.metadata_editor:
             self.metadata_editor.convert_image_to_dds()
-
-    def _place_note_at(self, abs_pos: float, cell: int, width: int | None = None) -> None:
-        self.note_editor.place_note_at(abs_pos, cell, width)
-
-    def _place_note_drag(self, sa: float, sc: int, ea: float, ec: int) -> None:
-        self.note_editor.place_note_drag(sa, sc, ea, ec)
-
-    def delete_selected_notes(self) -> None:
-        self.note_editor.delete_selected()
-
-    def undo_note_edit(self) -> None:
-        self.note_editor.undo()
-
-    def redo_note_edit(self) -> None:
-        self.note_editor.redo()
-
-    def _clear_edit_history(self) -> None:
-        self.note_editor.clear_history()
 
     # ── Playback ──
 
@@ -751,28 +731,11 @@ class MainWindow(QMainWindow):
             except ValueError:
                 pass
 
-    # ── Overlays ──
-
-    def _position_overlays(self) -> None:
-        if not hasattr(self, "visualizer") or (not self.visualizer.isVisible() or self.visualizer.width() < 100) and \
-           (not hasattr(self, "play_view") or not self.play_view.isVisible() or self.play_view.width() < 100):
-            QTimer.singleShot(100, self._position_overlays)
-            return
-        is_t = self._view_stack.currentIndex() == 0
-        ref = self.visualizer if is_t else self.play_view
-        m = 20
-        if hasattr(self, "fps_overlay"):
-            self.fps_overlay.setParent(ref)
-            self.fps_overlay.move(m, m)
-            self.fps_overlay.raise_()
-        if hasattr(self, "radar"):
-            self.radar.setParent(ref)
-            self.radar.move(ref.width() - self.radar.width() - m, m)
-            self.radar.raise_()
+    # ── Events ──
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        QTimer.singleShot(0, self._position_overlays)
+        QTimer.singleShot(0, self.overlay_manager.reposition)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if not self.file_handler.confirm_discard():
@@ -781,10 +744,11 @@ class MainWindow(QMainWindow):
         self.playback_service.shutdown()
         super().closeEvent(event)
 
-    # ── Settings delegates ──
+    def keyPressEvent(self, event):  # noqa: ANN401
+        if not self.key_handler.handle_key(event):
+            super().keyPressEvent(event)
 
-    def _apply_settings(self) -> None:
-        self.settings_handler.apply()
+    # ── Settings delegates (connected via menus.py) ──
 
     def _sync_menu_states(self) -> None:
         self.settings_handler.sync_menu_states()
@@ -792,117 +756,27 @@ class MainWindow(QMainWindow):
     def _sync_inspector_panel_visibility(self) -> None:
         self.settings_handler.sync_inspector_visibility()
 
-    def _toggle_warning_panel(self, checked: bool) -> None:
-        self.settings_handler.toggle_warnings(checked)
-
-    def _toggle_note_inspector(self, checked: bool) -> None:
-        self.settings_handler.toggle_inspector(checked)
-
-    def _toggle_editor_panel(self, checked: bool) -> None:
-        self.settings_handler.toggle_editor_panel(checked)
-
-    def _reset_zoom(self) -> None:
-        self.settings_handler.reset_zoom()
-
-    def _toggle_note_radar(self, checked: bool) -> None:
-        self.settings_handler.toggle_radar(checked)
-
-    def _toggle_fps_overlay(self, checked: bool) -> None:
-        self.settings_handler.toggle_fps(checked)
-
-    def _toggle_note_debug_overlay(self, checked: bool) -> None:
-        self.settings_handler.toggle_note_debug_overlay(checked)
-
-    def _toggle_export_button(self, checked: bool) -> None:
-        self.settings_handler.toggle_export_button(checked)
-
-    def _on_hitsound_volume_changed(self, value: int) -> None:
-        self.settings_handler.on_hitsound_volume(value)
-
-    def _on_music_volume_changed(self, value: int) -> None:
-        self.settings_handler.on_music_volume(value)
-
-    def _toggle_note_visibility(self, ntv: str, checked: bool) -> None:
-        self.settings_handler.toggle_note_visibility(ntv, checked)
-
-    def _on_grid_subdivision_changed(self, val: int) -> None:
-        self.settings_handler.on_grid_subdivision(val)
-
-    def _on_scroll_speed_changed(self, val: float) -> None:
-        self.settings_handler.on_scroll_speed(val)
-
-    # ── Keyboard ──
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        k = event.key()
-        modifiers = event.modifiers()
-        if k in {Qt.Key.Key_Delete, Qt.Key.Key_Backspace}:
-            self.delete_selected_notes()
-            event.accept()
-        elif k == Qt.Key.Key_Space:
-            self.toggle_playback()
-            event.accept()
-        elif k == Qt.Key.Key_C:
-            self.visualizer.column_mode ^= True
-            self.visualizer.update()
-            self.statusBar().showMessage(f"Column Mode: {'ON' if self.visualizer.column_mode else 'OFF'}", 2000)
-            event.accept()
-        elif k == Qt.Key.Key_BracketLeft:
-            self.visualizer.measures_per_column = max(1, self.visualizer.measures_per_column - 1)
-            self.visualizer.update()
-            self.statusBar().showMessage(f"Measures per Column: {self.visualizer.measures_per_column}", 2000)
-            event.accept()
-        elif k == Qt.Key.Key_BracketRight:
-            self.visualizer.measures_per_column = min(32, self.visualizer.measures_per_column + 1)
-            self.visualizer.update()
-            self.statusBar().showMessage(f"Measures per Column: {self.visualizer.measures_per_column}", 2000)
-            event.accept()
-        elif k == Qt.Key.Key_A and modifiers & Qt.ControlModifier:
-            self.select_all_notes()
-            event.accept()
-        elif k == Qt.Key.Key_Escape:
-            self.visualizer._clear_selection()
-            event.accept()
-        else:
-            super().keyPressEvent(event)
-
-    def select_all_notes(self) -> None:
-        if not self.current_chart:
-            return
-        notes = list(self.current_chart.notes)
-        if not notes:
-            return
-        self.visualizer.selected_notes = notes
-        self.visualizer.selected_note = notes[0]
-        self.visualizer.notes_selected.emit(notes)
-        self.visualizer.update()
-        self.statusBar().showMessage(f"Selected {len(notes)} note(s).", 2000)
-
-    def _install_spacebar_guard(self) -> None:
-        for w in self.findChildren(QPushButton):
-            w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
     # ── Export delegates ──
 
     def export_current_chart_image(self) -> None:
         if self.current_chart:
-            do_export_current_chart_image(self)
+            export_ops.export_current_chart_image(self)
 
     def export_all_charts(self) -> None:
-        do_export_all_charts(self)
+        export_ops.export_all_charts(self)
 
     def export_current_audio(self) -> None:
         if self.current_chart and self._chart_read_only:
-            do_export_current_audio(self)
+            export_ops.export_current_audio(self)
 
     def cancel_export_all(self) -> None:
-        do_cancel_export_all(self)
+        export_ops.cancel_export_all(self)
 
     def open_last_export_folder(self) -> None:
-        do_open_last_export_folder(self)
+        export_ops.open_last_export_folder(self)
 
     def open_logs_folder(self) -> None:
-        do_open_logs_folder(self)
+        export_ops.open_logs_folder(self)
 
     def open_last_export_log(self) -> None:
-        do_open_last_export_log(self)
+        export_ops.open_last_export_log(self)

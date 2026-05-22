@@ -14,6 +14,7 @@ from src.notes import (
     Slide,
     SlideTo,
 )
+from src.notes.geometry import note_get_steps
 
 if TYPE_CHECKING:
     from src.engine.timeline import ChartTimeline
@@ -54,7 +55,7 @@ def get_audible_events(note: "Note", timeline: "ChartTimeline") -> list[AudibleE
         )
         events.extend(
             AudibleEvent(timeline.note_end_tick(step))
-            for step in note.steps
+            for step in note_get_steps(note)
             if isinstance(step, SlideTo) and step.is_visible
         )
         return events
@@ -65,7 +66,7 @@ def get_audible_events(note: "Note", timeline: "ChartTimeline") -> list[AudibleE
     if isinstance(note, AirSlideStart):
         return [
             _air_event(timeline.note_end_tick(step))
-            for step in note.steps
+            for step in note_get_steps(note)
             if isinstance(step, AirSlide) and step.note_type == NoteType.ASD
         ]
 

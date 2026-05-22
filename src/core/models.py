@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
-    from src.notes import Note
     from src.engine.timeline import ChartTimeline
+    from src.notes import Note
 
 
 @dataclass(slots=True)
@@ -18,55 +18,55 @@ class ChartMetadata:
 
     version: str = ""
     """The C2S specification version (e.g., '1.08.00', '1.13.00')."""
-    
+
     music_id: str = ""
     """The internal music ID associated with the chart."""
-    
+
     title: str = ""
     """The display title of the track."""
-    
+
     artist: str = ""
     """The display artist of the track."""
-    
+
     sequence_id: str = ""
     """Unique sequence identifier for the difficulty."""
-    
+
     difficulty: str = ""
     """Human-readable difficulty name (BASIC, EXPERT, etc.)."""
-    
+
     level: str = ""
     """Display level (e.g., '14', '15+')."""
-    
+
     creator: str = ""
     """The chart author's display name."""
-    
+
     bpm_def: list[str] = field(default_factory=list)
     """Initial BPM definition from the BPM_DEF tag."""
-    
+
     met_def: tuple[int, int] = (4, 4)
     """Default time signature (beats per measure, beat unit)."""
-    
+
     resolution: int = 384
     """Ticks per measure (standardized to 384 for modern charts)."""
-    
+
     clk_def: int = 384
     """Click definition resolution."""
-    
+
     progjudge_bpm: float = 240.0
     """Internal arcade judge timing reference (default 240.0)."""
-    
+
     progjudge_aer: float = 0.999
     """Judge aerial coefficient."""
-    
+
     tutorial: bool = False
     """Flag indicating if this is a tutorial sequence."""
-    
+
     we_name: str = ""
     """WORLD'S END specific title/variant."""
-    
+
     we_level: int = 0
     """WORLD'S END star rating."""
-    
+
     difficulty_id: int = 0
     """Numeric difficulty index (0-5)."""
 
@@ -172,7 +172,7 @@ class Chart:
     clicks: list[Click] = field(default_factory=list)
     _warnings: list[str] = field(default_factory=list)
 
-    _timeline: "ChartTimeline" | None = None
+    _timeline: ChartTimeline | None = None
 
     @property
     def timeline(self) -> ChartTimeline:
@@ -198,13 +198,4 @@ class Chart:
 
     def find_note_line(self, note: Note) -> str:
         """Best-effort reconstruction of the source line for *note*."""
-        parts = [
-            str(note.note_type.value),
-            str(note.measure),
-            str(note.offset),
-            str(note.cell),
-            str(note.width),
-        ]
-        if hasattr(note, 'get_extra_parts'):
-            parts.extend(str(p) for p in note.get_extra_parts())
-        return "\t".join(parts)
+        return note.serialize()

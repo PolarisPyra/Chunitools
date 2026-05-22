@@ -10,7 +10,7 @@ from src.core.read import load_chart_file
 from src.engine.timeline import ChartTimeline
 from src.ui.view.chart_renderer import ChartRenderer
 from src.ui.view.projection import ViewProjection
-from src.ui.window.export import export_to_image, _safe_filename
+from src.ui.window.export import _safe_filename, export_to_image
 
 USAGE = "Usage: python src/cli/export_chart.py <chart_path> [output_path]"
 
@@ -31,16 +31,16 @@ def main() -> int:
 
     chart_path = sys.argv[1]
     app = QApplication.instance() or QApplication(sys.argv)
-    
+
     try:
         chart = load_chart_file(chart_path)
         timeline = ChartTimeline(chart)
         proj = ViewProjection(timeline_engine=timeline)
         painter = ChartRenderer(proj)
-        
+
         title = chart.metadata.title
         difficulty = chart.metadata.difficulty or chart.metadata.level or ""
-        
+
         if len(sys.argv) > 2:
             out_path = sys.argv[2]
         else:
@@ -54,7 +54,7 @@ def main() -> int:
 
         sys.stderr.write(f"Failed to export to {out_path}\n")
         return 1
-            
+
     except (OSError, ValueError, UnicodeDecodeError) as exc:
         sys.stderr.write(f"Error: {exc}\n")
         return 1

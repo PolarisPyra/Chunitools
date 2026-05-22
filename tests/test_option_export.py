@@ -11,7 +11,7 @@ from src.core.audio_assets import resolve_chart_awb_path
 from src.core.option_export import OptionExportError, export_option_folder, verify_option_folder
 from src.core.read import parse_c2s
 from src.core.write import create_blank_chart, serialize_music_xml
-from src.lib.sonic_audio_tools import extract_afs2_header, parse_afs2
+from src.audio.codecs import extract_afs2_header, parse_afs2
 
 
 def test_option_folder_export_writes_official_style_layout(tmp_path: Path) -> None:

@@ -10,7 +10,7 @@ from PySide6.QtCore import QTimer
 # Add src to path
 sys.path.append(os.path.join(os.getcwd(), "src"))
 
-from src.app.bootstrap import create_application
+from src.bootstrap import create_application
 from src.ui.window.window import MainWindow
 
 def run():

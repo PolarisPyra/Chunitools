@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import xml.etree.ElementTree as ET
+from abc import ABC, abstractmethod
 from dataclasses import replace
 from pathlib import Path
 from typing import TypedDict
@@ -52,6 +53,7 @@ from src.notes import (
     SlideTo,
     Tap,
 )
+from src.notes.geometry import note_duration, note_end_cell, note_end_width, note_has_steps, note_get_steps
 from src.core.metadata import fast_get_metadata
 
 __all__ = [
@@ -60,6 +62,8 @@ __all__ = [
     "DirectoryParseResult",
     "MetadataPreview",
     "DataScanner",
+    "IChartParser",
+    "C2sParser",
     "fast_get_metadata",
     "discover_chart_files",
     "parse_c2s",
@@ -319,6 +323,388 @@ def _parse_note(note_type: NoteType, args: list[str]) -> Note | None:
     return None
 
 
+class IChartParser(ABC):
+    """Abstract interface for chart parsing strategies.
+
+    Implementations parse chart file content into a :class:`Chart` model,
+    encapsulating format-version quirks within concrete subclasses.
+    """
+
+    @abstractmethod
+    def parse(self, content: str) -> Chart:
+        """Parse chart content into a Chart model."""
+
+
+class C2sParser(IChartParser):
+    """Multi-pass .c2s chart parser.
+
+    Encapsulates the complex hierarchical parsing logic:
+      1. Tokenization and metadata extraction
+      2. Note parsing and slide-segment chaining
+      3. Air-note anchor resolution
+    """
+
+    def __init__(self) -> None:
+        self._chart: Chart | None = None
+        self._raw_notes: list[tuple[NoteType, tuple[str, ...]]] = []
+        self._seen_raw_notes: set[tuple[NoteType, tuple[str, ...]]] = set()
+
+    def parse(self, content: str) -> Chart:
+        self._chart = Chart()
+        self._raw_notes.clear()
+        self._seen_raw_notes.clear()
+        self._tokenize(content)
+        self._pass1_parse_notes()
+        self._pass2_join_slides()
+        self._pass3_anchor_air_notes()
+        self._chart.notes.sort(key=lambda n: (n.measure, n.offset, n.cell))
+        return self._chart
+
+    # -- Convenience accessors ------------------------------------------------
+
+    @property
+    def _resolution(self) -> int:
+        return int(self._chart.metadata.resolution)
+
+    def _get_tick(self, n: Note) -> int:
+        return n.measure * self._resolution + n.offset
+
+    def _get_end_tick(self, n: Note) -> int:
+        if note_has_steps(n):
+            steps = note_get_steps(n)
+            if steps:
+                return self._get_end_tick(steps[-1])
+        dur = note_duration(n)
+        if dur > 0:
+            return self._get_tick(n) + dur
+        return self._get_tick(n)
+
+    # -- Tokenization (Pass 0) -----------------------------------------------
+
+    def _tokenize(self, content: str) -> None:
+        metadata_map = {
+            Command.MUSICID.value: "music_id",
+            Command.TITLE.value: "title",
+            Command.ARTIST.value: "artist",
+            Command.VERSION.value: "version",
+            Command.VERS.value: "version",
+            Command.MUSIC.value: "music_id",
+            Command.SEQUENCEID.value: "sequence_id",
+            Command.DIFFICULT.value: "difficulty",
+            Command.LEVEL.value: "level",
+            Command.CREATOR.value: "creator",
+            Command.RESOLUTION.value: "resolution",
+            Command.CLK_DEF.value: "clk_def",
+            Command.PROGJUDGE_BPM.value: "progjudge_bpm",
+            Command.PROGJUDGE_AER.value: "progjudge_aer",
+            Command.TUTORIAL.value: "tutorial",
+            Command.WENAME.value: "we_name",
+            Command.WELEVEL.value: "we_level",
+        }
+
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            parts = line.split("\t")
+            command_str, args = parts[0], parts[1:]
+
+            if command_str in metadata_map:
+                _handle_metadata_command(self._chart, command_str, args, metadata_map)
+            elif command_str == Command.BPM_DEF.value:
+                self._chart.metadata.bpm_def = args
+            elif command_str == Command.MET_DEF.value:
+                _handle_met_def_command(self._chart, args)
+            elif command_str == Command.BPM.value:
+                _handle_bpm_command(self._chart, args)
+            elif command_str == Command.MET.value:
+                _handle_met_command(self._chart, args)
+            elif command_str == CUSTOM_AUDIO_COMMAND and args:
+                self._chart.metadata.audio_path = " ".join(args).strip()
+            elif command_str in _SYSTEM_CMD_VALUES:
+                _handle_system_command(self._chart, command_str, args)
+            elif command_str in _NOTE_CMD_VALUES:
+                try:
+                    nt = NoteType(command_str)
+                    raw_note = (nt, tuple(args))
+                    if raw_note not in self._seen_raw_notes:
+                        self._seen_raw_notes.add(raw_note)
+                        self._raw_notes.append(raw_note)
+                except ValueError:
+                    continue
+
+    # -- Pass 1: Initial note parsing -----------------------------------------
+
+    def _pass1_parse_notes(self) -> None:
+        self._ground_notes: list[Note] = []
+        self._slide_segments: list[SlideTo] = []
+        self._air_slide_segments: list[AirSlide] = []
+        self._air_modifiers: list[tuple[NoteType, tuple[str, ...]]] = []
+        self._air_sustains: list[Note] = []
+
+        for nt, args_tuple in self._raw_notes:
+            args = list(args_tuple)
+            if nt in SLIDE_NOTE_TYPES:
+                note = _parse_note(nt, args)
+                if isinstance(note, SlideTo):
+                    self._slide_segments.append(note)
+            elif nt in AIR_SLIDE_NOTE_TYPES:
+                note = _parse_note(nt, args)
+                if isinstance(note, AirSlide):
+                    self._air_slide_segments.append(note)
+            elif nt in AIR_MODIFIER_NOTE_TYPES:
+                self._air_modifiers.append((nt, args_tuple))
+            else:
+                note = _parse_note(nt, args)
+                if note:
+                    if nt in AIR_SUSTAIN_NOTE_TYPES:
+                        self._air_sustains.append(note)
+                    else:
+                        self._ground_notes.append(note)
+
+    # -- Pass 2: Slide-segment chaining ---------------------------------------
+
+    def _pass2_join_slides(self) -> None:
+        self._target_note_families = {
+            NoteType.HLD: frozenset({NoteType.HLD, NoteType.HXD}),
+            NoteType.SLD: frozenset({NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}),
+            NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
+            NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
+            NoteType.ASX: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
+        }
+        self._used_slide_segments: set[SlideTo] = set()
+        self._used_air_slide_segments: set[AirSlide] = set()
+        self._joined_slides = self._join_slide_segments()
+        self._joined_air_slides = self._join_air_slide_segments()
+
+    def _matches_target_note(self, candidate: Note, target_type: str) -> bool:
+        try:
+            required_type = NoteType(target_type)
+        except ValueError:
+            return False
+        return candidate.note_type in self._target_note_families.get(
+            required_type, frozenset({required_type})
+        )
+
+    def _join_slide_segments(self) -> list[Slide]:
+        self._slide_segments.sort(key=lambda s: (self._get_tick(s), s.cell, s.width))
+        joined: list[Slide] = []
+        used = self._used_slide_segments
+
+        for i, start_seg in enumerate(self._slide_segments):
+            if start_seg in used:
+                continue
+            chain = [start_seg]
+            used.add(start_seg)
+            current = start_seg
+
+            while True:
+                end_tick = self._get_end_tick(current)
+                end_cell = current.end_cell
+                end_width = current.end_width
+                found = False
+                for j in range(i + 1, len(self._slide_segments)):
+                    nxt = self._slide_segments[j]
+                    if nxt in used:
+                        continue
+                    if (self._get_tick(nxt) == end_tick
+                            and nxt.cell == end_cell
+                            and nxt.width == end_width):
+                        chain.append(nxt)
+                        used.add(nxt)
+                        current = nxt
+                        found = True
+                        break
+                    if self._get_tick(nxt) > end_tick:
+                        break
+                if not found:
+                    break
+
+            joined.append(Slide(
+                note_type=start_seg.note_type,
+                measure=start_seg.measure,
+                offset=start_seg.offset,
+                cell=start_seg.cell,
+                width=start_seg.width,
+                steps=tuple(chain),
+            ))
+
+        orphan_slides = [s for s in self._slide_segments if s not in used]
+        if orphan_slides:
+            self._chart._warnings.append(
+                f"{len(orphan_slides)} slide segment(s) could not be chained "
+                f"(no matching successor at end position)"
+            )
+        return joined
+
+    def _join_air_slide_segments(self) -> list[AirSlideStart]:
+        self._air_slide_segments.sort(key=lambda s: (self._get_tick(s), s.cell, s.width))
+        joined: list[AirSlideStart] = []
+        used = self._used_air_slide_segments
+
+        for i, start_seg in enumerate(self._air_slide_segments):
+            if start_seg in used:
+                continue
+            chain: list[AirSlide] = [start_seg]
+            used.add(start_seg)
+            current = start_seg
+
+            while True:
+                end_tick = self._get_end_tick(current)
+                end_cell = current.end_cell
+                end_width = current.end_width
+                candidates: list[AirSlide] = []
+                for j in range(i + 1, len(self._air_slide_segments)):
+                    nxt = self._air_slide_segments[j]
+                    if nxt in used:
+                        continue
+                    if self._get_tick(nxt) == end_tick:
+                        if (abs(float(nxt.cell) - end_cell) < 0.1
+                                and abs(float(nxt.width) - end_width) < 0.1):
+                            candidates.append(nxt)
+                    if self._get_tick(nxt) > end_tick:
+                        break
+                if not candidates:
+                    break
+                best: AirSlide | None = None
+                for cand in candidates:
+                    if cand.target_note == current.note_type.value:
+                        best = cand
+                        break
+                if not best:
+                    best = candidates[0]
+                chain.append(best)
+                used.add(best)
+                current = best
+
+            joined.append(AirSlideStart(
+                note_type=start_seg.note_type,
+                measure=start_seg.measure,
+                offset=start_seg.offset,
+                cell=start_seg.cell,
+                width=start_seg.width,
+                steps=tuple(chain),
+            ))
+
+        orphan_air = [s for s in self._air_slide_segments if s not in used]
+        if orphan_air:
+            self._chart._warnings.append(
+                f"{len(orphan_air)} air slide segment(s) could not be chained "
+                f"(no matching successor at end position)"
+            )
+        return joined
+
+    # -- Pass 3: Air-note anchoring -------------------------------------------
+
+    def _pass3_anchor_air_notes(self) -> None:
+        remaining: list[AirSlide] = [
+            s for s in self._air_slide_segments if s not in self._used_air_slide_segments
+        ]
+        all_potential_anchors: list[Note] = [
+            *self._ground_notes,
+            *self._joined_slides,
+            *(n for n in self._air_sustains if n.note_type != NoteType.ALD),
+            *self._joined_air_slides,
+            *remaining,
+        ]
+
+        anchor_lookup: dict[tuple[int, int, int], list[Note]] = {}
+
+        def add_anchor(tick: int, cell: int, width: int, n: Note) -> None:
+            k = (tick, cell, width)
+            anchor_lookup.setdefault(k, []).append(n)
+
+        for n in all_potential_anchors:
+            add_anchor(self._get_tick(n), n.cell, n.width, n)
+            if note_has_steps(n):
+                for step in note_get_steps(n):
+                    add_anchor(self._get_end_tick(step), step.end_cell, step.end_width, step)
+            else:
+                dur = note_duration(n)
+                if dur > 0:
+                    ec = note_end_cell(n)
+                    ew = note_end_width(n)
+                    add_anchor(self._get_end_tick(n), ec, ew, n)
+
+        final_notes: list[Note] = []
+
+        # 3.1 Anchor joined air slides
+        for air_slide_note in self._joined_air_slides:
+            tick = self._get_tick(air_slide_note)
+            k = (tick, air_slide_note.cell, air_slide_note.width)
+            candidates = anchor_lookup.get(k, [])
+            anchor = None
+            target_type = air_slide_note.steps[0].target_note
+            if target_type == "DEF":
+                filtered = [c for c in candidates if c is not air_slide_note]
+                if filtered:
+                    anchor = filtered[0]
+            else:
+                for cand in candidates:
+                    if cand is not air_slide_note and self._matches_target_note(cand, target_type):
+                        anchor = cand
+                        break
+            if anchor:
+                air_slide_note = replace(air_slide_note, parent=anchor)
+            final_notes.append(air_slide_note)
+
+        # 3.2 Anchor individual remaining segments
+        for seg in remaining:
+            tick = self._get_tick(seg)
+            k = (tick, seg.cell, seg.width)
+            candidates = anchor_lookup.get(k, [])
+            anchor = None
+            target_type = seg.target_note
+            if target_type == "DEF":
+                filtered = [c for c in candidates if c is not seg]
+                if filtered:
+                    anchor = filtered[0]
+            else:
+                for cand in candidates:
+                    if cand is not seg and self._matches_target_note(cand, target_type):
+                        anchor = cand
+                        break
+            if anchor:
+                seg = replace(seg, parent=anchor)
+            final_notes.append(seg)
+
+        # 3.3 Add non-air notes
+        final_notes.extend(self._ground_notes)
+        final_notes.extend(self._joined_slides)
+        final_notes.extend(self._air_sustains)
+
+        # 3.4 Anchor air modifiers
+        for nt, args_tuple in self._air_modifiers:
+            args = list(args_tuple)
+            note = _parse_note(nt, args)
+            if not note:
+                continue
+            tick = self._get_tick(note)
+            k = (tick, note.cell, note.width)
+            candidates = anchor_lookup.get(k, [])
+            anchor = None
+            target_type = getattr(note, "target_note", "DEF")
+            if target_type == "DEF":
+                if candidates:
+                    anchor = candidates[0]
+            else:
+                for cand in candidates:
+                    if self._matches_target_note(cand, target_type):
+                        anchor = cand
+                        break
+            if anchor:
+                note = replace(note, parent=anchor)
+            final_notes.append(note)
+
+        self._chart.notes = final_notes
+
+
+def parse_c2s(content: str) -> Chart:
+    """Parse a complete .c2s file using a hierarchical multi-pass approach."""
+    return C2sParser().parse(content)
+
+
 def discover_chart_files(
     root: str | Path, suffixes: tuple[str, ...] = DEFAULT_CHART_SUFFIXES
 ) -> list[Path]:
@@ -482,373 +868,7 @@ def _handle_system_command(chart: Chart, command_str: str, args: list[str]) -> N
         pass
 
 
-def parse_c2s(content: str) -> Chart:
-    """Parse a complete .c2s file using a hierarchical multi-pass approach."""
-    chart = Chart()
-    metadata_map = {
-        Command.MUSICID.value: "music_id",
-        Command.TITLE.value: "title",
-        Command.ARTIST.value: "artist",
-        Command.VERSION.value: "version",
-        Command.VERS.value: "version",
-        Command.MUSIC.value: "music_id",
-        Command.SEQUENCEID.value: "sequence_id",
-        Command.DIFFICULT.value: "difficulty",
-        Command.LEVEL.value: "level",
-        Command.CREATOR.value: "creator",
-        Command.RESOLUTION.value: "resolution",
-        Command.CLK_DEF.value: "clk_def",
-        Command.PROGJUDGE_BPM.value: "progjudge_bpm",
-        Command.PROGJUDGE_AER.value: "progjudge_aer",
-        Command.TUTORIAL.value: "tutorial",
-        Command.WENAME.value: "we_name",
-        Command.WELEVEL.value: "we_level",
-    }
-
-
-    raw_notes: list[tuple[NoteType, tuple[str, ...]]] = []
-    seen_raw_notes: set[tuple[NoteType, tuple[str, ...]]] = set()
-
-    for raw_line in content.splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-
-        parts = line.split("\t")
-        command_str, args = parts[0], parts[1:]
-
-        if command_str in metadata_map:
-            _handle_metadata_command(chart, command_str, args, metadata_map)
-        elif command_str == Command.BPM_DEF.value:
-            chart.metadata.bpm_def = args
-        elif command_str == Command.MET_DEF.value:
-            _handle_met_def_command(chart, args)
-        elif command_str == Command.BPM.value:
-            _handle_bpm_command(chart, args)
-        elif command_str == Command.MET.value:
-            _handle_met_command(chart, args)
-        elif command_str == CUSTOM_AUDIO_COMMAND and args:
-            chart.metadata.audio_path = " ".join(args).strip()
-        elif command_str in _SYSTEM_CMD_VALUES:
-            _handle_system_command(chart, command_str, args)
-        elif command_str in _NOTE_CMD_VALUES:
-            try:
-                nt = NoteType(command_str)
-                # Deduplicate exact identical lines to avoid extra overlapping notes
-                raw_note = (nt, tuple(args))
-                if raw_note not in seen_raw_notes:
-                    seen_raw_notes.add(raw_note)
-                    raw_notes.append(raw_note)
-            except ValueError:
-                continue
-
-    # Pass 1: Initial Parsing
-    ground_notes: list[Note] = []
-    slide_segments: list[SlideTo] = []
-    air_slide_segments: list[AirSlide] = []
-    # Only AIR arrows need anchoring; sustains are potential anchors themselves.
-    air_modifiers: list[tuple[NoteType, tuple[str, ...]]] = []
-    air_sustains: list[Note] = []
-
-    for nt, args_tuple in raw_notes:
-        args = list(args_tuple)
-        if nt in SLIDE_NOTE_TYPES:
-            note = _parse_note(nt, args)
-            if isinstance(note, SlideTo):
-                slide_segments.append(note)
-        elif nt in AIR_SLIDE_NOTE_TYPES:
-            note = _parse_note(nt, args)
-            if isinstance(note, AirSlide):
-                air_slide_segments.append(note)
-        elif nt in AIR_MODIFIER_NOTE_TYPES:
-            air_modifiers.append((nt, args_tuple))
-        else:
-            note = _parse_note(nt, args)
-            if note:
-                if nt in AIR_SUSTAIN_NOTE_TYPES:
-                    air_sustains.append(note)
-                else:
-                    ground_notes.append(note)
-
-    res = int(chart.metadata.resolution)
-
-    def get_tick(n: Note) -> int:
-        return n.measure * res + n.offset
-
-    def get_end_tick(n: Note) -> int:
-        if isinstance(n, (Slide, AirSlideStart)):
-            return get_end_tick(n.steps[-1])
-        if hasattr(n, "duration"):
-            return get_tick(n) + getattr(n, "duration")
-        return get_tick(n)
-
-    target_note_families = {
-        NoteType.HLD: frozenset({NoteType.HLD, NoteType.HXD}),
-        NoteType.SLD: frozenset({NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}),
-        NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
-        NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
-        NoteType.ASX: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
-    }
-
-    def matches_target_note(candidate: Note, target_type: str) -> bool:
-        try:
-            required_type = NoteType(target_type)
-        except ValueError:
-            return False
-        return candidate.note_type in target_note_families.get(
-            required_type, frozenset({required_type})
-        )
-
-    # Pass 2: Join Slide Segments
-    # Sort segments by start tick
-    slide_segments.sort(key=lambda s: (get_tick(s), s.cell, s.width))
-    
-    joined_slides: list[Slide] = []
-    used_segments: set[SlideTo] = set()
-
-    for i, slide_start_segment in enumerate(slide_segments):
-        if slide_start_segment in used_segments:
-            continue
-        
-        # Start a new slide chain
-        slide_chain = [slide_start_segment]
-        used_segments.add(slide_start_segment)
-        
-        current_slide_segment = slide_start_segment
-        while True:
-            # Look for a segment that starts where curr ends
-            end_tick = get_end_tick(current_slide_segment)
-            end_cell = current_slide_segment.end_cell
-            end_width = current_slide_segment.end_width
-            
-            found = False
-            # Search forward from current position
-            for j in range(i + 1, len(slide_segments)):
-                next_seg = slide_segments[j]
-                if next_seg in used_segments:
-                    continue
-                
-                if (get_tick(next_seg) == end_tick and 
-                    next_seg.cell == end_cell and 
-                    next_seg.width == end_width):
-                    slide_chain.append(next_seg)
-                    used_segments.add(next_seg)
-                    current_slide_segment = next_seg
-                    found = True
-                    break
-                
-                # Since segments are sorted by tick, we can stop early if we've passed end_tick
-                if get_tick(next_seg) > end_tick:
-                    break
-            
-            if not found:
-                break
-        
-        # Create a Slide from the chain
-        joined_slide = Slide(
-            note_type=slide_start_segment.note_type,
-            measure=slide_start_segment.measure,
-            offset=slide_start_segment.offset,
-            cell=slide_start_segment.cell,
-            width=slide_start_segment.width,
-            steps=tuple(slide_chain)
-        )
-        joined_slides.append(joined_slide)
-
-    # Pass 2.1: Join Air Slide Segments (Restored to its logical place)
-    air_slide_segments.sort(key=lambda s: (get_tick(s), s.cell, s.width))
-    joined_air_slides: list[AirSlideStart] = []
-    used_air_segments: set[AirSlide] = set()
-
-    for i, air_start_segment in enumerate(air_slide_segments):
-        if air_start_segment in used_air_segments:
-            continue
-        
-        air_chain: list[AirSlide] = [air_start_segment]
-        used_air_segments.add(air_start_segment)
-        
-        current_air_segment = air_start_segment
-        while True:
-            end_tick = get_end_tick(current_air_segment)
-            end_cell = current_air_segment.end_cell
-            end_width = current_air_segment.end_width
-            
-            air_candidates: list[AirSlide] = []
-            for j in range(i + 1, len(air_slide_segments)):
-                next_air_segment = air_slide_segments[j]
-                if next_air_segment in used_air_segments:
-                    continue
-                if get_tick(next_air_segment) == end_tick:
-                    if abs(float(next_air_segment.cell) - end_cell) < 0.1 and abs(float(next_air_segment.width) - end_width) < 0.1:
-                        air_candidates.append(next_air_segment)
-                if get_tick(next_air_segment) > end_tick:
-                    break
-            
-            if air_candidates:
-                best_next: AirSlide | None = None
-                for cand in air_candidates:
-                    if cand.target_note == current_air_segment.note_type.value:
-                        best_next = cand
-                        break
-                
-                if not best_next:
-                    best_next = air_candidates[0]
-                
-                air_chain.append(best_next)
-                used_air_segments.add(best_next)
-                current_air_segment = best_next
-                found = True
-            else:
-                found = False
-            
-            if not found:
-                break
-        
-        air_slide = AirSlideStart(
-            note_type=air_start_segment.note_type,
-            measure=air_start_segment.measure,
-            offset=air_start_segment.offset,
-            cell=air_start_segment.cell,
-            width=air_start_segment.width,
-            steps=tuple(air_chain)
-        )
-        joined_air_slides.append(air_slide)
-
-    # Warn about orphan (un-joined) slide segments
-    orphan_slides = [s for s in slide_segments if s not in used_segments]
-    if orphan_slides:
-        chart._warnings.append(
-            f"{len(orphan_slides)} slide segment(s) could not be chained "
-            f"(no matching successor at end position)"
-        )
-    orphan_air_slides = [s for s in air_slide_segments if s not in used_air_segments]
-    if orphan_air_slides:
-        chart._warnings.append(
-            f"{len(orphan_air_slides)} air slide segment(s) could not be chained "
-            f"(no matching successor at end position)"
-        )
-
-    # Pass 3: Anchor ALL Air Notes (Chains, Segments, and Modifiers)
-    remaining_segments: list[AirSlide] = [
-        segment for segment in air_slide_segments if segment not in used_air_segments
-    ]
-    all_potential_anchors: list[Note] = [
-        *ground_notes,
-        *joined_slides,
-        *(note for note in air_sustains if note.note_type != NoteType.ALD),
-        *joined_air_slides,
-        *remaining_segments,
-    ]
-    
-    # Build lookup for all possible anchor points
-    anchor_lookup: dict[tuple[int, int, int], list[Note]] = {}
-    
-    def add_anchor(tick: int, cell: int, width: int, n: Note):
-        k = (tick, cell, width)
-        if k not in anchor_lookup:
-            anchor_lookup[k] = []
-        anchor_lookup[k].append(n)
-
-    for n in all_potential_anchors:
-        # Start of any note
-        add_anchor(get_tick(n), n.cell, n.width, n)
-        
-        if isinstance(n, (Slide, AirSlideStart)):
-            # Each step end can be an anchor
-            for step in n.steps:
-                add_anchor(get_end_tick(step), step.end_cell, step.end_width, step)
-        elif hasattr(n, "duration") and getattr(n, "duration") > 0:
-            # End of hold/sustain
-            end_cell = getattr(n, "end_cell", n.cell)
-            end_width = getattr(n, "end_width", n.width)
-            add_anchor(get_end_tick(n), end_cell, end_width, n)
-
-    final_notes: list[Note] = []
-
-    # 3.1 Anchor Joined Air Slides
-    for air_slide_note in joined_air_slides:
-        tick = get_tick(air_slide_note)
-        k = (tick, air_slide_note.cell, air_slide_note.width)
-        candidates = anchor_lookup.get(k, [])
-        
-        anchor = None
-        target_type = air_slide_note.steps[0].target_note
-        if target_type == "DEF":
-            if candidates:
-                # Avoid self-anchoring
-                filtered = [c for c in candidates if c is not air_slide_note]
-                if filtered:
-                    anchor = filtered[0]
-        else:
-            for air_slide_candidate in candidates:
-                if air_slide_candidate is air_slide_note: continue
-                if matches_target_note(air_slide_candidate, target_type):
-                    anchor = air_slide_candidate
-                    break
-        
-        if anchor:
-            air_slide_note = replace(air_slide_note, parent=anchor)
-        final_notes.append(air_slide_note)
-
-    # 3.2 Anchor Individual segments (orphans)
-    for remaining_segment in remaining_segments:
-        tick = get_tick(remaining_segment)
-        k = (tick, remaining_segment.cell, remaining_segment.width)
-        candidates = anchor_lookup.get(k, [])
-        
-        anchor = None
-        target_type = remaining_segment.target_note
-        if target_type == "DEF":
-            if candidates:
-                filtered = [c for c in candidates if c is not remaining_segment]
-                if filtered:
-                    anchor = filtered[0]
-        else:
-            for remaining_candidate in candidates:
-                if remaining_candidate is remaining_segment: continue
-                if matches_target_note(remaining_candidate, target_type):
-                    anchor = remaining_candidate
-                    break
-        
-        if anchor:
-            remaining_segment = replace(remaining_segment, parent=anchor)
-        final_notes.append(remaining_segment)
-
-    # 3.3 Add non-air notes to final list
-    final_notes.extend(ground_notes)
-    final_notes.extend(joined_slides)
-    final_notes.extend(air_sustains)
-
-    # 3.4 Anchor Air Modifiers (Arrows)
-    for nt, args_tuple in air_modifiers:
-        args = list(args_tuple)
-        note = _parse_note(nt, args)
-        if not note:
-            continue
-
-        tick = get_tick(note)
-        k = (tick, note.cell, note.width)
-        candidates = anchor_lookup.get(k, [])
-        
-        anchor = None
-        target_type = getattr(note, "target_note", "DEF")
-        if target_type == "DEF":
-            if candidates:
-                anchor = candidates[0]
-        else:
-            for modifier_candidate in candidates:
-                if matches_target_note(modifier_candidate, target_type):
-                    anchor = modifier_candidate
-                    break
-        
-        if anchor:
-            note = replace(note, parent=anchor)
-
-        final_notes.append(note)
-
-    chart.notes = final_notes
-    chart.notes.sort(key=lambda n: (n.measure, n.offset, n.cell))
-    return chart
+# (parse_c2s is now delegated to C2sParser above)
 
 
 def load_chart_file(path: str | Path) -> Chart:

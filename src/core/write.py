@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from src.core.editor_metadata import save_editor_metadata
-from src.core.models import BpmEntry, Chart, ChartMetadata, Deceleration, Stop, TimeSignatureEntry
-from src.notes import AirSlideStart, Note, Slide
+from src.core.models import BpmEntry, Chart, ChartMetadata, TimeSignatureEntry
+from src.notes.geometry import note_get_steps, note_has_steps
+
+if TYPE_CHECKING:
+    from src.notes import Note
 
 DIFFICULTY_NAME_TO_ID = {
     "BASIC": 0,
@@ -26,6 +31,42 @@ DIFFICULTY_ID_TO_MUSIC_TYPE = {
     4: ("Ultima", "ULTIMA"),
     5: ("WorldsEnd", "WORLD'S END"),
 }
+
+
+class IChartSerializer(ABC):
+    """Abstract interface for chart serialization strategies."""
+
+    @abstractmethod
+    def serialize(self, chart: Chart) -> str:
+        """Serialize a Chart to a .c2s document string."""
+
+
+class C2sSerializer(IChartSerializer):
+    """Tab-delimited .c2s document serializer."""
+
+    def serialize(self, chart: Chart) -> str:
+        return self._serialize_c2s(chart)
+
+    def serialize_music_xml(
+        self, chart: Chart, chart_filename: str, jacket_filename: str = ""
+    ) -> str:
+        """Serialize arcade-style Music.xml for custom chart metadata."""
+        return _serialize_music_xml(chart.metadata, chart_filename, jacket_filename)
+
+    # -- Private helpers -----------------------------------------------------
+
+    @staticmethod
+    def _serialize_c2s(chart: Chart) -> str:
+        meta = chart.metadata
+        lines = _header_lines(meta)
+        lines.append("")
+        lines.extend(_bpm_lines(chart.bpms))
+        lines.extend(_signature_lines(chart.signatures))
+        lines.extend(_soflan_lines(chart))
+        if chart.notes:
+            lines.append("")
+            lines.extend(_note_lines(chart.notes))
+        return "\n".join(lines).rstrip() + "\n"
 
 
 def create_blank_chart() -> Chart:
@@ -56,8 +97,139 @@ def create_blank_chart() -> Chart:
 
 def serialize_c2s(chart: Chart) -> str:
     """Serialize a chart to a tab-delimited .c2s document."""
-    meta = chart.metadata
-    lines: list[str] = [
+    return C2sSerializer().serialize(chart)
+
+
+def save_chart_file(
+    chart: Chart,
+    path: str | Path,
+    source_chart_path: str | Path | None = None,
+) -> None:
+    """Write a chart to disk as UTF-8 .c2s text."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(serialize_c2s(chart), encoding="utf-8")
+    save_editor_metadata(chart, output_path, source_chart_path)
+
+
+def serialize_music_xml(chart: Chart, chart_filename: str, jacket_filename: str = "") -> str:
+    """Serialize arcade-style Music.xml for custom chart metadata."""
+    return _serialize_music_xml(chart.metadata, chart_filename, jacket_filename)
+
+
+def save_music_xml(chart: Chart, path: str | Path, chart_filename: str) -> None:
+    """Write Music.xml next to a custom chart."""
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    jacket_filename = Path(chart.metadata.jacket_path).name if chart.metadata.jacket_path else ""
+    output_path.write_text(
+        serialize_music_xml(chart, chart_filename, jacket_filename),
+        encoding="utf-8",
+    )
+
+
+# -- Module-level helpers (shared by serializer and public API) --------------
+
+
+def _line(command: str, *values: object) -> str:
+    return "\t".join([command, *(str(value) for value in values)])
+
+
+def _format_float(value: float) -> str:
+    return f"{float(value):.3f}".rstrip("0").rstrip(".")
+
+
+def _format_official_float(value: float) -> str:
+    return f"{float(value):.3f}"
+
+
+def _bpm_def(meta: ChartMetadata) -> list[str]:
+    if meta.bpm_def:
+        return [_format_official_float(float(value)) for value in meta.bpm_def]
+    bpm = _format_official_float(meta.progjudge_bpm if meta.progjudge_bpm > 0 else 120.0)
+    return [bpm, bpm, bpm, bpm]
+
+
+def _difficulty_id(meta: ChartMetadata) -> int:
+    if meta.difficulty_id:
+        return int(meta.difficulty_id)
+    return DIFFICULTY_NAME_TO_ID.get((meta.difficulty or "").upper(), 3)
+
+
+def _default_sequence_id(meta: ChartMetadata) -> str:
+    return f"{meta.music_id or '0000'}_{_difficulty_id(meta):02d}"
+
+
+def _normalized_music_id(meta: ChartMetadata) -> str:
+    raw = (meta.music_id or "0").strip()
+    if raw.isdecimal():
+        return str(int(raw))
+    return raw or "0"
+
+
+def _sorted_bpms(bpms: list[BpmEntry]) -> list[BpmEntry]:
+    return sorted(bpms, key=lambda bpm: (bpm["measure"], bpm["offset"], bpm["bpm"]))
+
+
+def _sorted_signatures(signatures: list[TimeSignatureEntry]) -> list[TimeSignatureEntry]:
+    return sorted(
+        signatures,
+        key=lambda signature: (
+            signature["measure"],
+            signature["numerator"],
+            signature["denominator"],
+        ),
+    )
+
+
+def _iter_serializable_notes(notes: list[Note]) -> list[Note]:
+    serializable: list[Note] = []
+    for note in sorted(notes, key=lambda item: (item.measure, item.offset, item.cell)):
+        if note_has_steps(note):
+            serializable.extend(note_get_steps(note))
+        else:
+            serializable.append(note)
+    return serializable
+
+
+def _note_line(note: Note) -> str:
+    return note.serialize()
+
+
+def _text_node(root: ET.Element, path: str, value: str) -> None:
+    current = root
+    for part in path.split("/"):
+        found = current.find(part)
+        if found is None:
+            found = ET.SubElement(current, part)
+        current = found
+    current.text = value
+
+
+def _string_id(root: ET.Element, path: str, value_id: str, value_str: str, data: str) -> None:
+    _text_node(root, f"{path}/id", value_id)
+    _text_node(root, f"{path}/str", value_str)
+    _text_node(root, f"{path}/data", data)
+
+
+def _split_level(value: str) -> tuple[int, int]:
+    raw = (value or "1").strip()
+    plus = raw.endswith("+")
+    raw = raw.rstrip("+")
+    try:
+        if "." in raw:
+            base_raw, decimal_raw = raw.split(".", 1)
+            return max(1, int(base_raw)), max(0, min(99, int(decimal_raw[:2].ljust(2, "0"))))
+        return max(1, int(raw)), 50 if plus else 0
+    except ValueError:
+        return 1, 0
+
+
+# -- .c2s line-building helpers ---------------------------------------------
+
+
+def _header_lines(meta: ChartMetadata) -> list[str]:
+    lines = [
         _line("VERSION", meta.version or "1.13.00", meta.version or "1.13.00"),
         _line("MUSIC", _normalized_music_id(meta)),
         _line("SEQUENCEID", meta.sequence_id or _default_sequence_id(meta)),
@@ -76,71 +248,54 @@ def serialize_c2s(chart: Chart) -> str:
         lines.append(_line("WENAME", meta.we_name))
     if meta.we_level:
         lines.append(_line("WELEVEL", meta.we_level))
+    return lines
 
-    lines.append("")
-    for bpm in _sorted_bpms(chart.bpms):
-        lines.append(
-            _line("BPM", bpm["measure"], bpm["offset"], _format_official_float(bpm["bpm"]))
-        )
-    for signature in _sorted_signatures(chart.signatures):
-        lines.append(
-            _line(
-                "MET",
-                signature["measure"],
-                0,
-                signature["numerator"],
-                signature["denominator"],
-            )
-        )
 
+def _bpm_lines(bpms: list[BpmEntry]) -> list[str]:
+    return [
+        _line("BPM", bpm["measure"], bpm["offset"], _format_official_float(bpm["bpm"]))
+        for bpm in _sorted_bpms(bpms)
+    ]
+
+
+def _signature_lines(signatures: list[TimeSignatureEntry]) -> list[str]:
+    return [
+        _line("MET", sig["measure"], 0, sig["numerator"], sig["denominator"])
+        for sig in _sorted_signatures(signatures)
+    ]
+
+
+def _soflan_lines(chart: Chart) -> list[str]:
+    lines: list[str] = []
     if chart.soflan_areas:
         lines.append("")
         for area in chart.soflan_areas:
             lines.append(_line("SLA", area.measure, area.tick, area.cell, area.width, area.duration, area.area_id))
-
     if chart.soflan_patterns:
         for pat in chart.soflan_patterns:
             lines.append(_line("SLP", pat.measure, pat.tick, pat.duration, _format_official_float(pat.speed), pat.pattern_id))
-
     if chart.scroll_speeds:
         for spd in chart.scroll_speeds:
             lines.append(_line("SFL", spd.measure, spd.tick, spd.duration, _format_official_float(spd.multiplier)))
-
     if chart.stops:
         for stop in chart.stops:
             lines.append(_line("STP", stop.measure, stop.tick, stop.duration))
-
     if chart.decelerations:
         for dec in chart.decelerations:
             lines.append(_line("DCM", dec.measure, dec.tick, dec.duration, _format_official_float(dec.rate)))
-
     if chart.clicks:
         for click in chart.clicks:
             lines.append(_line("CLK", click.measure, click.tick))
-
-    if chart.notes:
-        lines.append("")
-        for note in _iter_serializable_notes(chart.notes):
-            lines.append(_note_line(note))
-
-    return "\n".join(lines).rstrip() + "\n"
+    return lines
 
 
-def save_chart_file(
-    chart: Chart,
-    path: str | Path,
-    source_chart_path: str | Path | None = None,
-) -> None:
-    """Write a chart to disk as UTF-8 .c2s text."""
-    output_path = Path(path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(serialize_c2s(chart), encoding="utf-8")
-    save_editor_metadata(chart, output_path, source_chart_path)
+def _note_lines(notes: list[Note]) -> list[str]:
+    return [_note_line(n) for n in _iter_serializable_notes(notes)]
 
 
-def serialize_music_xml(chart: Chart, chart_filename: str, jacket_filename: str = "") -> str:
-    """Serialize arcade-style Music.xml for custom chart metadata."""
-    meta = chart.metadata
+def _serialize_music_xml(
+    meta: ChartMetadata, chart_filename: str, jacket_filename: str = ""
+) -> str:
     if not jacket_filename and meta.jacket_path:
         jacket_filename = Path(meta.jacket_path).name
     music_id = _normalized_music_id(meta)
@@ -205,125 +360,3 @@ def serialize_music_xml(chart: Chart, chart_filename: str, jacket_filename: str 
         encoding="unicode",
         short_empty_elements=False,
     )
-
-
-def save_music_xml(chart: Chart, path: str | Path, chart_filename: str) -> None:
-    """Write Music.xml next to a custom chart."""
-    output_path = Path(path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    jacket_filename = Path(chart.metadata.jacket_path).name if chart.metadata.jacket_path else ""
-    output_path.write_text(
-        serialize_music_xml(chart, chart_filename, jacket_filename),
-        encoding="utf-8",
-    )
-
-
-def _line(command: str, *values: object) -> str:
-    return "\t".join([command, *(str(value) for value in values)])
-
-
-def _format_float(value: float) -> str:
-    return f"{float(value):.3f}".rstrip("0").rstrip(".")
-
-
-def _format_official_float(value: float) -> str:
-    return f"{float(value):.3f}"
-
-
-def _bpm_def(meta: ChartMetadata) -> list[str]:
-    if meta.bpm_def:
-        return [_format_official_float(float(value)) for value in meta.bpm_def]
-    bpm = _format_official_float(meta.progjudge_bpm if meta.progjudge_bpm > 0 else 120.0)
-    return [bpm, bpm, bpm, bpm]
-
-
-def _difficulty_name(meta: ChartMetadata) -> str:
-    if meta.difficulty:
-        return meta.difficulty
-    if meta.difficulty_id in DIFFICULTY_ID_TO_MUSIC_TYPE:
-        return DIFFICULTY_ID_TO_MUSIC_TYPE[meta.difficulty_id][1]
-    return "MASTER"
-
-
-def _difficulty_id(meta: ChartMetadata) -> int:
-    if meta.difficulty_id:
-        return int(meta.difficulty_id)
-    return DIFFICULTY_NAME_TO_ID.get((meta.difficulty or "").upper(), 3)
-
-
-def _default_sequence_id(meta: ChartMetadata) -> str:
-    return f"{meta.music_id or '0000'}_{_difficulty_id(meta):02d}"
-
-
-def _normalized_music_id(meta: ChartMetadata) -> str:
-    raw = (meta.music_id or "0").strip()
-    if raw.isdecimal():
-        return str(int(raw))
-    return raw or "0"
-
-
-def _sorted_bpms(bpms: list[BpmEntry]) -> list[BpmEntry]:
-    return sorted(bpms, key=lambda bpm: (bpm["measure"], bpm["offset"], bpm["bpm"]))
-
-
-def _sorted_signatures(signatures: list[TimeSignatureEntry]) -> list[TimeSignatureEntry]:
-    return sorted(
-        signatures,
-        key=lambda signature: (
-            signature["measure"],
-            signature["numerator"],
-            signature["denominator"],
-        ),
-    )
-
-
-def _iter_serializable_notes(notes: list[Note]) -> list[Note]:
-    serializable: list[Note] = []
-    for note in sorted(notes, key=lambda item: (item.measure, item.offset, item.cell)):
-        if isinstance(note, (Slide, AirSlideStart)):
-            serializable.extend(note.steps)
-        else:
-            serializable.append(note)
-    return serializable
-
-
-def _note_line(note: Note) -> str:
-    parts = [
-        note.note_type.value,
-        str(note.measure),
-        str(note.offset),
-        str(note.cell),
-        str(note.width),
-    ]
-    if hasattr(note, "get_extra_parts"):
-        parts.extend(str(part) for part in note.get_extra_parts())
-    return "\t".join(parts)
-
-
-def _text_node(root: ET.Element, path: str, value: str) -> None:
-    current = root
-    for part in path.split("/"):
-        found = current.find(part)
-        if found is None:
-            found = ET.SubElement(current, part)
-        current = found
-    current.text = value
-
-
-def _string_id(root: ET.Element, path: str, value_id: str, value_str: str, data: str) -> None:
-    _text_node(root, f"{path}/id", value_id)
-    _text_node(root, f"{path}/str", value_str)
-    _text_node(root, f"{path}/data", data)
-
-
-def _split_level(value: str) -> tuple[int, int]:
-    raw = (value or "1").strip()
-    plus = raw.endswith("+")
-    raw = raw.rstrip("+")
-    try:
-        if "." in raw:
-            base_raw, decimal_raw = raw.split(".", 1)
-            return max(1, int(base_raw)), max(0, min(99, int(decimal_raw[:2].ljust(2, "0"))))
-        return max(1, int(raw)), 50 if plus else 0
-    except ValueError:
-        return 1, 0

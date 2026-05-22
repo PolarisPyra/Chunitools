@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from src.app import bootstrap
-from src.app.bootstrap import (
+from src.bootstrap import (
     BOOTSTRAP_ONLY_ENV,
     BOOTSTRAP_ONLY_VALUE,
     _is_bootstrap_only,

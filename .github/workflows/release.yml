@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os_label: linux
+            ext: ""
+            archive_fmt: tar.gz
+          - os: macos-latest
+            os_label: macos
+            ext: ""
+            archive_fmt: tar.gz
+          - os: windows-latest
+            os_label: windows
+            ext: ".exe"
+            archive_fmt: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libegl1 libxkbcommon0 libfontconfig1
+
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libxml2 2>/dev/null || true
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Download vgmstream-cli
+        shell: bash
+        run: |
+          VG_VER="r2010"
+          OS="${{ matrix.os_label }}"
+          mkdir -p "vendor/vgmstream/$OS"
+          case "$OS" in
+            linux)
+              curl -sL "https://github.com/vgmstream/vgmstream/releases/download/${VG_VER}/vgmstream-cli_${VG_VER}_Ubuntu64.tar.gz" \
+                | tar xz -C "vendor/vgmstream/$OS" vgmstream-cli 2>/dev/null || true
+              ;;
+            macos)
+              curl -sL "https://github.com/vgmstream/vgmstream/releases/download/${VG_VER}/vgmstream-cli_${VG_VER}_macOS.tar.gz" \
+                | tar xz -C "vendor/vgmstream/$OS" vgmstream-cli 2>/dev/null || true
+              ;;
+            windows)
+              curl -sLO "https://github.com/vgmstream/vgmstream/releases/download/${VG_VER}/vgmstream-cli_${VG_VER}_win64.zip"
+              unzip -o "vgmstream-cli_${VG_VER}_win64.zip" vgmstream-cli.exe -d "vendor/vgmstream/$OS" 2>/dev/null || true
+              rm -f "vgmstream-cli_${VG_VER}_win64.zip"
+              ;;
+          esac
+          echo "vgmstream status:"; ls -la "vendor/vgmstream/$OS/" 2>/dev/null || echo "(none, audio will fallback)"
+
+      - name: Build with PyInstaller
+        run: uv run pyinstaller --noconfirm chunitools.spec
+
+      - name: Prepare archive
+        shell: bash
+        run: |
+          OS="${{ matrix.os_label }}"
+          EXT="${{ matrix.ext }}"
+          DIST_DIR="chunitools_${OS}"
+          mkdir -p "${DIST_DIR}"
+          cp "dist/chunitools${EXT}" "${DIST_DIR}/"
+          if [ -d "dist/vgmstream" ]; then
+            cp -r "dist/vgmstream" "${DIST_DIR}/"
+          fi
+          echo "Files in ${DIST_DIR}:"
+          ls -la "${DIST_DIR}/"
+
+      - name: Create archive
+        shell: bash
+        run: |
+          OS="${{ matrix.os_label }}"
+          FMT="${{ matrix.archive_fmt }}"
+          if [ "$FMT" = "zip" ]; then
+            7z a "chunitools_${OS}.zip" "chunitools_${OS}/" 2>/dev/null || \
+              zip -r "chunitools_${OS}.zip" "chunitools_${OS}/"
+          else
+            tar czf "chunitools_${OS}.tar.gz" "chunitools_${OS}/"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chunitools-${{ matrix.os_label }}
+          path: chunitools_${{ matrix.os_label }}.*
+          if-no-files-found: warn
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: chunitools-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: chunitools ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            chunitools_linux.tar.gz
+            chunitools_macos.tar.gz
+            chunitools_windows.zip

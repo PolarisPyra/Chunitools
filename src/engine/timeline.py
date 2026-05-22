@@ -5,28 +5,56 @@ from __future__ import annotations
 import bisect
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Protocol, TypeAlias
 
 from src.core.const import AIR_NOTE_TYPES, NoteType, RenderRole
 from src.notes import (
     Air,
-    AirHold,
-    AirHoldStart,
     AirSlide,
     AirSlideStart,
-    AirSolid,
-    CrashSlide,
-    HeavenHold,
-    Hold,
     Note,
     Slide,
     SlideTo,
 )
+from src.notes.geometry import note_duration, note_end_cell, note_end_width, note_target_note, note_has_steps
 
 if TYPE_CHECKING:
     from src.core.models import Chart
 
-__all__ = ["BpmPoint", "ChartTimeline"]
+__all__ = ["BpmPoint", "ChartTimeline", "TimelineProtocol"]
+
+
+class TimelineProtocol(Protocol):
+    """Structural protocol for chart temporal/spatial queries.
+
+    Consumers may accept any object conforming to this protocol instead of
+    depending directly on :class:`ChartTimeline`.
+    """
+
+    resolution: int
+
+    def note_tick(self, note: Note) -> int: ...
+    def note_end_tick(self, note: Note) -> int: ...
+    def note_abs_pos(self, note: Note) -> float: ...
+    def note_abs_end_pos(self, note: Note) -> float: ...
+    def note_z_index(self, note: Note) -> int: ...
+    def note_anchor(self, note: Note) -> Note | None: ...
+    def note_has_successor(self, note: Note) -> bool: ...
+    def note_render_role(self, note: Note) -> RenderRole | None: ...
+    def note_chain_root(self, note: Note) -> Note: ...
+    def note_chain_successor(self, note: Note) -> Note | None: ...
+    def note_chain_predecessor(self, note: Note) -> Note | None: ...
+    def to_tick(self, measure: int, offset: int) -> int: ...
+    def time_at(self, tick: int) -> float: ...
+    def time_at_measure(self, abs_pos: float) -> float: ...
+    def pos_at_time(self, seconds: float) -> float: ...
+    def bpm_at(self, tick: int) -> float: ...
+    def bpm_at_pos(self, abs_pos: float) -> float: ...
+    def span_at(self, note: Note, tick: int) -> tuple[int, int] | None: ...
+    def overlaps(self, a_cell: int, a_width: int, b_cell: int, b_width: int) -> bool: ...
+    def is_mid_air(self, tick: int, cell: int, width: int) -> bool: ...
+    def resolve_anchor(self, note: Note) -> Note | None: ...
+    def calculate_max_measure(self) -> int: ...
 
 GeometryKey: TypeAlias = tuple[int, int, int, int]
 SlideChainKey: TypeAlias = tuple[str, int, int, int, int]
@@ -60,35 +88,6 @@ GROUND_SLIDE_TYPES: frozenset[NoteType] = frozenset(
     {NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}
 )
 AIR_SLIDE_TYPES: frozenset[NoteType] = frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX})
-LONG_NOTE_CLASSES = (
-    Hold,
-    Slide,
-    AirHoldStart,
-    AirHold,
-    CrashSlide,
-    AirSolid,
-    HeavenHold,
-    AirSlideStart,
-    AirSlide,
-    SlideTo,
-)
-MOVING_NOTE_CLASSES = (
-    Slide,
-    SlideTo,
-    CrashSlide,
-    AirSolid,
-    HeavenHold,
-    AirSlideStart,
-    AirSlide,
-    AirHold,
-)
-AIR_TARGET_CLASSES = (
-    Air,
-    AirHoldStart,
-    AirHold,
-    AirSlideStart,
-    AirSlide,
-)
 BEATS_PER_MEASURE = 4.0
 
 
@@ -211,30 +210,22 @@ class ChartTimeline:
         self.chart.warnings = self._resolve_anchors_and_validate()
 
     def _get_note_duration(self, note: Note) -> int:
-        if isinstance(note, LONG_NOTE_CLASSES):
-            return int(getattr(note, "duration", 0))
-        return 0
+        return note_duration(note)
 
     def _get_note_end_cell(self, note: Note) -> int:
-        if isinstance(note, MOVING_NOTE_CLASSES):
-            return int(getattr(note, "end_cell", note.cell))
-        return note.cell
+        return note_end_cell(note)
 
     def _get_note_end_width(self, note: Note) -> int:
-        if isinstance(note, MOVING_NOTE_CLASSES):
-            return int(getattr(note, "end_width", note.width))
-        return note.width
+        return note_end_width(note)
 
     def _get_note_target_note(self, note: Note) -> str:
-        if isinstance(note, AIR_TARGET_CLASSES):
-            return getattr(note, "target_note", "")
-        return ""
+        return note_target_note(note)
 
     def _iter_notes_with_steps(self) -> Iterator[Note]:
         """Yield top-level notes and nested slide steps in render order."""
         for note in self.chart.notes:
             yield note
-            if isinstance(note, (Slide, AirSlideStart)):
+            if note_has_steps(note):
                 yield from note.steps
 
     def _cache_note_layout(self, note: Note) -> None:

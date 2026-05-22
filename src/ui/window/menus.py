@@ -174,43 +174,43 @@ def create_menu_bar(window: MainWindow) -> None:
     # --- View Menu ---
     window.toggle_warnings_action = QAction("Show Warnings", window, checkable=True)
     window.toggle_warnings_action.setChecked(settings.show_warnings)
-    window.toggle_warnings_action.triggered.connect(window._toggle_warning_panel)
+    window.toggle_warnings_action.triggered.connect(window.settings_handler.toggle_warnings)
     view_menu.addAction(window.toggle_warnings_action)
 
     window.toggle_radar_action = QAction("Show Note Radar", window, checkable=True)
     window.toggle_radar_action.setChecked(settings.show_radar)
-    window.toggle_radar_action.triggered.connect(window._toggle_note_radar)
+    window.toggle_radar_action.triggered.connect(window.settings_handler.toggle_radar)
     view_menu.addAction(window.toggle_radar_action)
 
     window.toggle_fps_action = QAction("Show FPS Overlay", window, checkable=True)
     window.toggle_fps_action.setChecked(settings.show_fps)
-    window.toggle_fps_action.triggered.connect(window._toggle_fps_overlay)
+    window.toggle_fps_action.triggered.connect(window.settings_handler.toggle_fps)
     view_menu.addAction(window.toggle_fps_action)
 
     window.toggle_note_debug_action = QAction("Show Note Debug Overlay", window, checkable=True)
     window.toggle_note_debug_action.setChecked(settings.show_note_debug_overlay)
-    window.toggle_note_debug_action.triggered.connect(window._toggle_note_debug_overlay)
+    window.toggle_note_debug_action.triggered.connect(window.settings_handler.toggle_note_debug_overlay)
     view_menu.addAction(window.toggle_note_debug_action)
 
     view_menu.addSeparator()
 
     window.toggle_inspector_action = QAction("Show Note Inspector", window, checkable=True)
     window.toggle_inspector_action.setChecked(settings.show_inspector)
-    window.toggle_inspector_action.triggered.connect(window._toggle_note_inspector)
+    window.toggle_inspector_action.triggered.connect(window.settings_handler.toggle_inspector)
     view_menu.addAction(window.toggle_inspector_action)
 
     window.toggle_editor_action = QAction("Show Option Editor", window, checkable=True)
     window.toggle_editor_action.setChecked(False)
-    window.toggle_editor_action.triggered.connect(window._toggle_editor_panel)
+    window.toggle_editor_action.triggered.connect(window.settings_handler.toggle_editor_panel)
     view_menu.addAction(window.toggle_editor_action)
 
     window.toggle_export_btn_action = QAction("Show Export Button", window, checkable=True)
     window.toggle_export_btn_action.setChecked(settings.show_export_button)
-    window.toggle_export_btn_action.triggered.connect(window._toggle_export_button)
+    window.toggle_export_btn_action.triggered.connect(window.settings_handler.toggle_export_button)
     view_menu.addAction(window.toggle_export_btn_action)
 
     reset_zoom_action = QAction("Reset Zoom", window)
-    reset_zoom_action.triggered.connect(window._reset_zoom)
+    reset_zoom_action.triggered.connect(window.settings_handler.reset_zoom)
     view_menu.addAction(reset_zoom_action)
 
     # --- Mode Menu ---
@@ -285,7 +285,7 @@ def create_menu_bar(window: MainWindow) -> None:
             action = QAction(f"Show {label}", window, checkable=True)
             action.setChecked(visible)
             action.triggered.connect(
-                lambda checked, val=nt_value: window._toggle_note_visibility(val, checked)
+                lambda checked, val=nt_value: window.settings_handler.toggle_note_visibility(val, checked)
             )
             cat_menu.addAction(action)
 

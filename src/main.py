@@ -5,7 +5,7 @@ from pathlib import Path
 if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.app.bootstrap import run
+from src.bootstrap import run
 
 
 def run_app() -> int:

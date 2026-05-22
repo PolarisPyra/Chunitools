@@ -1,8 +1,8 @@
 """Small Python port of the SonicAudioTools AWB/HCA export pieces."""
 
-from src.lib.sonic_audio_tools.acb import retarget_acb_template
-from src.lib.sonic_audio_tools.afs2 import Afs2Entry, build_afs2, extract_afs2_header, parse_afs2
-from src.lib.sonic_audio_tools.hca import (
+from src.audio.codecs.acb import retarget_acb_template
+from src.audio.codecs.afs2 import Afs2Entry, build_afs2, extract_afs2_header, parse_afs2
+from src.audio.codecs.hca import (
     HcaEncodeError,
     HcaInfo,
     encode_source_to_hca,
