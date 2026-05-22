@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QWidget
 
 from src.core.const import AIR_NOTE_TYPES, NoteType, RenderRole
 from src.core.models import Chart
+from src.engine.soflan import SoflanProjector
 from src.notes import (
     AirSlideStart,
     Note,
@@ -448,6 +449,7 @@ class PlayView3D(QWidget):
         self._note_times: dict[int, float] = {}
         self._note_end_times: dict[int, float] = {}
         self._note_abs_pos: dict[int, float] = {}
+        self._soflan_projector: SoflanProjector | None = None
         self._defer_air_arrows: bool = False
         self._deferred_air_arrows: list[
             tuple[Note, float, float, float, float, int, NoteType, float, float, float, float]
@@ -475,6 +477,7 @@ class PlayView3D(QWidget):
 
     def draw_chart(self, chart: Chart) -> None:
         self.chart = chart
+        self._soflan_projector = SoflanProjector(chart)
         self._notes = list(chart.notes)
         self._cache_note_times()
         self._max_scroll_measure = float(chart.timeline.calculate_max_measure() + 3)
@@ -560,6 +563,33 @@ class PlayView3D(QWidget):
     def _compute_depth(self, note_time_s: float, judge_time_s: float) -> float:
         window = _visible_window(self.scroll_speed)
         return _world_depth(note_time_s, judge_time_s, window)
+
+    def _compute_note_depth(
+        self,
+        note: Note,
+        tick: int,
+        note_time_s: float,
+        judge_time_s: float,
+        *,
+        cell: float | None = None,
+        width: float | None = None,
+    ) -> float:
+        window = _visible_window(self.scroll_speed)
+        projector = self._soflan_projector
+        if projector is None or not projector.has_scroll_effects():
+            return _world_depth(note_time_s, judge_time_s, window)
+        return (
+            projector.depth_for_note_tick(
+                note,
+                tick,
+                note_time_s,
+                judge_time_s,
+                window,
+                cell=cell,
+                width=width,
+            )
+            * VISIBLE_DEPTH
+        )
 
     def _get_render_pos(self) -> float:
         if self.playback_controller:
@@ -957,13 +987,18 @@ class PlayView3D(QWidget):
         judge_y = h * 0.90
 
         visible_notes = []
+        tl = self.chart.timeline
         for note in self._notes:
             if not self.visible_note_types.get(note.note_type.value, True):
                 continue
             note_time = self._note_times.get(id(note), 0.0)
             end_time = self._note_end_times.get(id(note), note_time)
-            depth = self._compute_depth(note_time, judge_time)
-            end_depth = self._compute_depth(end_time, judge_time)
+            depth = self._compute_note_depth(
+                note, tl.note_tick(note), note_time, judge_time
+            )
+            end_depth = self._compute_note_depth(
+                note, tl.note_end_tick(note), end_time, judge_time
+            )
 
             if _has_sustain(note):
                 if _sustain_draw_depths(depth, end_depth) is None:
@@ -1452,7 +1487,14 @@ class PlayView3D(QWidget):
         for index, step in enumerate(note.steps):
             current_tick += step.duration
             step_time = tl.time_at(current_tick)
-            step_depth = self._compute_depth(step_time, judge_time)
+            step_depth = self._compute_note_depth(
+                note,
+                current_tick,
+                step_time,
+                judge_time,
+                cell=float(step.end_cell),
+                width=float(step.end_width),
+            )
             last_depth = step_depth
 
             if min(prev_depth, step_depth) >= DRAW_DEPTH_MAX:
@@ -2046,7 +2088,15 @@ class PlayView3D(QWidget):
             step_abs = step.measure + step.offset / tl.resolution
             step_end_abs = step_abs + step.duration / tl.resolution
             step_time = tl.time_at_measure(step_end_abs)
-            step_depth = self._compute_depth(step_time, judge_time)
+            step_tick = tl.to_tick(step.measure, step.offset) + step.duration
+            step_depth = self._compute_note_depth(
+                note,
+                step_tick,
+                step_time,
+                judge_time,
+                cell=float(step.end_cell),
+                width=float(step.end_width),
+            )
 
             if min(prev_depth, step_depth) >= DRAW_DEPTH_MAX:
                 break
@@ -2200,7 +2250,14 @@ class PlayView3D(QWidget):
                 curr_cell = note.cell + (end_cell - note.cell) * progress
                 curr_width = note.width + (end_width - note.width) * progress
                 curr_time = tl.time_at(current_abs_tick)
-                curr_depth = self._compute_depth(curr_time, judge_time)
+                curr_depth = self._compute_note_depth(
+                    note,
+                    current_abs_tick,
+                    curr_time,
+                    judge_time,
+                    cell=curr_cell,
+                    width=curr_width,
+                )
 
                 if not _depth_in_draw_range(curr_depth):
                     continue
