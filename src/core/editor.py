@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Any
 
 from src.core.const import NoteType
 from src.core.models import Chart
@@ -26,6 +27,117 @@ from src.notes import (
 )
 
 DEFAULT_NOTE_DURATION = 384
+
+# ── Builder registry ────────────────────────────────────────────────────
+
+_Base = dict[str, Any]
+
+
+def _build_tap(b: _Base, **extras: Any) -> Note:
+    return Tap(**b)
+
+
+def _build_extap(b: _Base, **extras: Any) -> Note:
+    return ExTap(**b, unknown="0")
+
+
+def _build_flick(b: _Base, **extras: Any) -> Note:
+    return Flick(**b, unknown="L")
+
+
+def _build_mine(b: _Base, **extras: Any) -> Note:
+    return Mine(**b)
+
+
+def _build_air_solid(b: _Base, duration: int, **extras: Any) -> Note:
+    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
+    return AirSolid(**b, starting_height=1.0, starting_depth=1.0,
+                    duration=duration, end_cell=ec, end_width=ew,
+                    target_height=1.0, target_depth=1.0, color="DEF")
+
+
+def _build_heaven_hold(b: _Base, duration: int, **extras: Any) -> Note:
+    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
+    return HeavenHold(**b, starting_height=1.0, duration=duration,
+                      end_cell=ec, end_width=ew, target_height=1.0,
+                      heaven_id=0,
+                      animation="UP" if b["note_type"] == NoteType.HHX else None)
+
+
+def _build_hold(b: _Base, duration: int, **extras: Any) -> Note:
+    return Hold(**b, duration=duration)
+
+
+def _build_slide(b: _Base, duration: int, **extras: Any) -> Note:
+    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
+    step = SlideTo(**b, duration=duration, end_cell=ec, end_width=ew,
+                   target_id="", animation=None,
+                   is_visible=b["note_type"] in {NoteType.SLD, NoteType.SXD})
+    return Slide(**b, steps=(step,))
+
+
+def _build_air(b: _Base, **extras: Any) -> Note:
+    return Air(**b, target_note=extras.get("target_note", "DEF"))
+
+
+def _build_air_hold_start(b: _Base, duration: int, **extras: Any) -> Note:
+    return AirHoldStart(**b, target_note=extras.get("target_note", "DEF"), duration=duration)
+
+
+def _build_air_hold(b: _Base, duration: int, **extras: Any) -> Note:
+    return AirHold(**b, target_note=extras.get("target_note", "DEF"), duration=duration, color="DEF")
+
+
+def _build_air_trace(b: _Base, duration: int, **extras: Any) -> Note:
+    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
+    return CrashSlide(**b, crush_interval=0, starting_height=1.0,
+                      duration=duration, end_cell=ec, end_width=ew,
+                      target_height=1.0, color="NON")
+
+
+def _build_air_slide(b: _Base, duration: int, **extras: Any) -> Note:
+    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
+    step = AirSlide(**b, target_note=extras.get("target_note", "DEF"),
+                    starting_height=1.0, duration=duration,
+                    end_cell=ec, end_width=ew, target_height=1.0, color="DEF")
+    return AirSlideStart(**b, steps=(step,))
+
+
+_NOTE_BUILDERS: dict[NoteType, Any] = {
+    NoteType.TAP: _build_tap,
+    NoteType.CHR: _build_extap,
+    NoteType.FLK: _build_flick,
+    NoteType.MNE: _build_mine,
+    NoteType.ASO: _build_air_solid,
+    NoteType.HHD: _build_heaven_hold,
+    NoteType.HHX: _build_heaven_hold,
+    NoteType.HLD: _build_hold,
+    NoteType.HXD: _build_hold,
+    NoteType.SLD: _build_slide,
+    NoteType.SXD: _build_slide,
+    NoteType.SLC: _build_slide,
+    NoteType.SXC: _build_slide,
+    NoteType.AIR: _build_air,
+    NoteType.AUR: _build_air,
+    NoteType.AUL: _build_air,
+    NoteType.ADW: _build_air,
+    NoteType.ADR: _build_air,
+    NoteType.ADL: _build_air,
+    NoteType.AHD: _build_air_hold_start,
+    NoteType.AHX: _build_air_hold,
+    NoteType.ALD: _build_air_trace,
+    NoteType.ASD: _build_air_slide,
+    NoteType.ASC: _build_air_slide,
+}
+
+
+def _end_geom(cell: int, width: int, end_cell: Any, end_width: Any) -> tuple[int, int]:
+    return clamp_note_geometry(
+        cell if end_cell is None else end_cell,
+        width if end_width is None else end_width,
+    )
+
+# ── Public API ──────────────────────────────────────────────────────────
 
 
 def snap_abs_pos(abs_pos: float, resolution: int, subdivisions: int) -> tuple[int, int]:
@@ -61,117 +173,18 @@ def make_note(
     """Create a note with valid default extra fields for the requested type."""
     cell, width = clamp_note_geometry(cell, width)
     duration = max(1, int(duration))
-    base = {
-        "note_type": note_type,
-        "measure": max(0, int(measure)),
-        "offset": max(0, int(offset)),
-        "cell": cell,
-        "width": width,
-        "parent": parent,
-    }
-
-    if note_type == NoteType.TAP:
-        return Tap(**base)
-    if note_type == NoteType.CHR:
-        return ExTap(**base, unknown="0")
-    if note_type == NoteType.FLK:
-        return Flick(**base, unknown="L")
-    if note_type == NoteType.MNE:
-        return Mine(**base)
-    if note_type == NoteType.ASO:
-        end_cell, end_width = clamp_note_geometry(
-            cell if end_cell is None else end_cell,
-            width if end_width is None else end_width,
-        )
-        return AirSolid(
-            **base,
-            starting_height=1.0,
-            starting_depth=1.0,
-            duration=duration,
-            end_cell=end_cell,
-            end_width=end_width,
-            target_height=1.0,
-            target_depth=1.0,
-            color="DEF",
-        )
-    if note_type in {NoteType.HHD, NoteType.HHX}:
-        end_cell, end_width = clamp_note_geometry(
-            cell if end_cell is None else end_cell,
-            width if end_width is None else end_width,
-        )
-        return HeavenHold(
-            **base,
-            starting_height=1.0,
-            duration=duration,
-            end_cell=end_cell,
-            end_width=end_width,
-            target_height=1.0,
-            heaven_id=0,
-            animation="UP" if note_type == NoteType.HHX else None,
-        )
-    if note_type in {NoteType.HLD, NoteType.HXD}:
-        return Hold(**base, duration=duration)
-    if note_type in {NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC}:
-        end_cell, end_width = clamp_note_geometry(
-            cell if end_cell is None else end_cell,
-            width if end_width is None else end_width,
-        )
-        step = SlideTo(
-            **base,
-            duration=duration,
-            end_cell=end_cell,
-            end_width=end_width,
-            target_id="",
-            animation=None,
-            is_visible=note_type in {NoteType.SLD, NoteType.SXD},
-        )
-        return Slide(**base, steps=(step,))
-    if note_type in {
-        NoteType.AIR,
-        NoteType.AUR,
-        NoteType.AUL,
-        NoteType.ADW,
-        NoteType.ADR,
-        NoteType.ADL,
-    }:
-        return Air(**base, target_note=target_note)
-    if note_type == NoteType.AHD:
-        return AirHoldStart(**base, target_note=target_note, duration=duration)
-    if note_type == NoteType.AHX:
-        return AirHold(**base, target_note=target_note, duration=duration, color="DEF")
-    if note_type == NoteType.ALD:
-        end_cell, end_width = clamp_note_geometry(
-            cell if end_cell is None else end_cell,
-            width if end_width is None else end_width,
-        )
-        return CrashSlide(
-            **base,
-            crush_tick=0,
-            starting_height=1.0,
-            duration=duration,
-            end_cell=end_cell,
-            end_width=end_width,
-            target_height=1.0,
-            color="NON",
-        )
-    if note_type in {NoteType.ASD, NoteType.ASC}:
-        end_cell, end_width = clamp_note_geometry(
-            cell if end_cell is None else end_cell,
-            width if end_width is None else end_width,
-        )
-        step = AirSlide(
-            **base,
-            target_note=target_note,
-            starting_height=1.0,
-            duration=duration,
-            end_cell=end_cell,
-            end_width=end_width,
-            target_height=1.0,
-            color="DEF",
-        )
-        return AirSlideStart(**base, steps=(step,))
-
-    raise ValueError(f"Unsupported note type: {note_type.value}")
+    builder = _NOTE_BUILDERS.get(note_type)
+    if builder is None:
+        raise ValueError(f"Unsupported note type: {note_type.value}")
+    return builder(
+        {"note_type": note_type, "measure": max(0, int(measure)),
+         "offset": max(0, int(offset)), "cell": cell, "width": width,
+         "parent": parent},
+        duration=duration,
+        end_cell=end_cell,
+        end_width=end_width,
+        target_note=target_note,
+    )
 
 
 def add_note(chart: Chart, note: Note) -> None:
