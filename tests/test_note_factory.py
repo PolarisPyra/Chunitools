@@ -21,11 +21,11 @@ from src.notes import (
     Tap,
 )
 from src.notes.factory import (
-    AIR_MODIFIER_NOTE_TYPES,
+    AIR_ARROW_NOTE_TYPES,
+    AIR_HOLD_NOTE_TYPES,
     AIR_SLIDE_NOTE_TYPES,
-    AIR_SUSTAIN_NOTE_TYPES,
+    AIR_TRACE_NOTE_TYPES,
     EDITOR_NOTE_TYPES,
-    NOTE_FACTORIES,
     PARSER_NOTE_TYPES,
     SLIDE_NOTE_TYPES,
     build_editor_note,
@@ -119,16 +119,18 @@ def test_parser_note_type_groups_match_current_c2s_parser_needs() -> None:
         NoteType.ADW,
         NoteType.ADR,
         NoteType.ADL,
-    } == AIR_MODIFIER_NOTE_TYPES
-    assert {NoteType.AHD, NoteType.ALD, NoteType.AHX} == AIR_SUSTAIN_NOTE_TYPES
+    } == AIR_ARROW_NOTE_TYPES
+    assert {NoteType.AHD, NoteType.AHX} == AIR_HOLD_NOTE_TYPES
+    assert {NoteType.ALD} == AIR_TRACE_NOTE_TYPES
     assert NoteType.ASX in PARSER_NOTE_TYPES
     assert NoteType.ASX not in EDITOR_NOTE_TYPES
 
 
 def test_playable_note_types_have_schema_and_factory_entries() -> None:
     assert set(NOTE_SCHEMAS) == PLAYABLE_NOTE_TYPES
-    assert set(NOTE_FACTORIES) == PLAYABLE_NOTE_TYPES
     assert all(NOTE_SCHEMAS[note_type].evidence for note_type in PLAYABLE_NOTE_TYPES)
+    # Every playable type must have a parser entry
+    assert all(nt in PARSER_NOTE_TYPES for nt in PLAYABLE_NOTE_TYPES)
 
 
 def test_renamed_fields_keep_compatibility_aliases() -> None:
@@ -155,7 +157,7 @@ def test_renamed_fields_keep_compatibility_aliases() -> None:
     assert old_extap.animation == "DW"
     assert flick.unknown == "L"
     assert old_flick.direction == "R"
-    assert air_slide.wrapped_type == "TAP"
+    assert air_slide.target_note == "TAP"
 
 
 @pytest.mark.parametrize(

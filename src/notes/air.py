@@ -84,11 +84,6 @@ class AirSlide(Note):
     target_height: float
     color: str
 
-    @property
-    def wrapped_type(self) -> str:
-        """Compatibility-forward alias for the wrapped note type field."""
-        return self.target_note
-
     def get_extra_parts(self) -> list[str]:
         return [
             self.target_note,

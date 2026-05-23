@@ -18,7 +18,7 @@ from src.ui.components.note_debug_overlay import (
 )
 
 
-def test_air_sustain_debug_label_anchors_to_action_bar_end() -> None:
+def test_air_path_debug_label_anchors_to_action_bar_end() -> None:
     app = QApplication.instance() or QApplication([])
     _ = app
     step = AirSlide(

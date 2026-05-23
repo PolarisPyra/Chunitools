@@ -1,6 +1,6 @@
 [project]
 name = "chunitools"
-version = "0.3.0"
+version = "0.4.0"
 description = "A high-performance Chunithm chart parser and viewer"
 authors = [{ name = "Polaris", email = "polaris@example.com" }]
 requires-python = ">=3.10"

@@ -232,7 +232,7 @@ class AirRendererMixin(RendererMixinSupport):
                 get_note_color(NoteType.AHD)
                 if note.note_type == NoteType.AHX
                 else self._air_base_note_color(note),
-                self.constants.AIR_SUSTAIN_WIDTH,
+                self.constants.AIR_PATH_WIDTH,
             )
         )
         painter.drawLine(QPointF(x + w / 2, ys), QPointF(x + w / 2, ye))
@@ -256,7 +256,7 @@ class AirRendererMixin(RendererMixinSupport):
         painter.setPen(
             QPen(
                 self._air_base_note_color(note),
-                self.constants.AIR_SUSTAIN_WIDTH,
+                self.constants.AIR_PATH_WIDTH,
             )
         )
         painter.drawLine(QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
@@ -282,7 +282,7 @@ class AirRendererMixin(RendererMixinSupport):
             painter.setPen(
                 QPen(
                     self._air_base_note_color(step),
-                    self.constants.AIR_SUSTAIN_WIDTH,
+                    self.constants.AIR_PATH_WIDTH,
                 )
             )
             painter.drawLine(QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
@@ -305,7 +305,7 @@ class AirRendererMixin(RendererMixinSupport):
         painter.setPen(
             QPen(
                 self._air_base_note_color(note),
-                self.constants.AIR_SUSTAIN_WIDTH,
+                self.constants.AIR_PATH_WIDTH,
             )
         )
         painter.drawLine(QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
@@ -323,7 +323,7 @@ class AirRendererMixin(RendererMixinSupport):
         color = self._air_base_note_color(note)
         fill = QColor(color)
         fill.setAlpha(54)
-        painter.setPen(QPen(color, self.constants.AIR_SUSTAIN_WIDTH * 2.5))
+        painter.setPen(QPen(color, self.constants.AIR_PATH_WIDTH * 2.5))
         painter.drawLine(start, end)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(fill))

@@ -44,9 +44,10 @@ from src.notes import (
     SlideTo,
 )
 from src.notes.factory import (
-    AIR_MODIFIER_NOTE_TYPES,
+    AIR_ARROW_NOTE_TYPES,
+    AIR_HOLD_NOTE_TYPES,
     AIR_SLIDE_NOTE_TYPES,
-    AIR_SUSTAIN_NOTE_TYPES,
+    AIR_TRACE_NOTE_TYPES,
     PARSER_NOTE_TYPE_VALUES,
     SLIDE_NOTE_TYPES,
     parse_note,
@@ -236,8 +237,10 @@ class C2sParser(IChartParser):
         self._ground_notes: list[Note] = []
         self._slide_segments: list[SlideTo] = []
         self._air_slide_segments: list[AirSlide] = []
-        self._air_modifiers: list[tuple[NoteType, tuple[str, ...]]] = []
-        self._air_sustains: list[Note] = []
+        self._air_arrows: list[tuple[NoteType, tuple[str, ...]]] = []
+        self._air_path_notes: list[Note] = []
+
+        _air_path_types = AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_TRACE_NOTE_TYPES
 
         for nt, args_tuple in self._raw_notes:
             args = list(args_tuple)
@@ -249,13 +252,13 @@ class C2sParser(IChartParser):
                 note = _parse_note(nt, args)
                 if isinstance(note, AirSlide):
                     self._air_slide_segments.append(note)
-            elif nt in AIR_MODIFIER_NOTE_TYPES:
-                self._air_modifiers.append((nt, args_tuple))
+            elif nt in AIR_ARROW_NOTE_TYPES:
+                self._air_arrows.append((nt, args_tuple))
             else:
                 note = _parse_note(nt, args)
                 if note:
-                    if nt in AIR_SUSTAIN_NOTE_TYPES:
-                        self._air_sustains.append(note)
+                    if nt in _air_path_types:
+                        self._air_path_notes.append(note)
                     else:
                         self._ground_notes.append(note)
 
@@ -408,7 +411,7 @@ class C2sParser(IChartParser):
         all_potential_anchors: list[Note] = [
             *self._ground_notes,
             *self._joined_slides,
-            *(n for n in self._air_sustains if n.note_type != NoteType.ALD),
+            *(n for n in self._air_path_notes if n.note_type != NoteType.ALD),
             *self._joined_air_slides,
             *remaining,
         ]
@@ -484,10 +487,10 @@ class C2sParser(IChartParser):
         # 3.3 Add non-air notes
         final_notes.extend(self._ground_notes)
         final_notes.extend(self._joined_slides)
-        final_notes.extend(self._air_sustains)
+        final_notes.extend(self._air_path_notes)
 
-        # 3.4 Anchor air modifiers
-        for nt, args_tuple in self._air_modifiers:
+        # 3.4 Anchor air arrows
+        for nt, args_tuple in self._air_arrows:
             args = list(args_tuple)
             note = _parse_note(nt, args)
             if not note:

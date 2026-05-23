@@ -337,7 +337,7 @@ def _clip_sustain_start(
     return start_cell, start_width, start_depth
 
 
-def _clip_air_sustain_start(
+def _clip_air_path_start(
     start_cell: float,
     start_width: float,
     start_world_y: float | None,
@@ -1590,7 +1590,7 @@ class PlayView3D(QWidget):
             return False
         return step.note_type in {NoteType.SLD, NoteType.SXD}
 
-    def _draw_air_sustain_line(
+    def _draw_air_path_line(
         self,
         painter: QPainter,
         x1: float, y1: float, w1: float,
@@ -1911,7 +1911,7 @@ class PlayView3D(QWidget):
         draw_depth, draw_end_depth = draw_depths
         start_world_y = _air_path_world_y(note)
         end_world_y = _air_path_world_y(note, end=True)
-        start_cell, start_width, start_world_y, draw_depth = _clip_air_sustain_start(
+        start_cell, start_width, start_world_y, draw_depth = _clip_air_path_start(
             note.cell,
             note.width,
             start_world_y,
@@ -1975,7 +1975,7 @@ class PlayView3D(QWidget):
             draw_depth, draw_end_depth = draw_depths
             start_world_y = self._air_wrapped_start_world_y(note)
             end_world_y = _air_path_world_y(note, end=True)
-            start_cell, start_width, start_world_y, draw_depth = _clip_air_sustain_start(
+            start_cell, start_width, start_world_y, draw_depth = _clip_air_path_start(
                 note.cell,
                 note.width,
                 start_world_y,
@@ -2006,7 +2006,7 @@ class PlayView3D(QWidget):
                 color,
                 alpha,
             )
-            self._draw_air_sustain_line(
+            self._draw_air_path_line(
                 painter, x, y, w, end_x, end_y, end_w,
                 color, alpha, scale, end_scale,
             )
@@ -2118,7 +2118,7 @@ class PlayView3D(QWidget):
             draw_start_depth, draw_step_depth = draw_depths
             step_world_y = _air_path_world_y(step, end=True)
             start_cell, start_width, start_world_y, draw_start_depth = (
-                _clip_air_sustain_start(
+                _clip_air_path_start(
                     prev_cell,
                     prev_width,
                     prev_world_y,
@@ -2138,7 +2138,7 @@ class PlayView3D(QWidget):
                 vanish_y, judge_y
             )
 
-            self._draw_air_sustain_line(
+            self._draw_air_path_line(
                 painter, prev_x, prev_y, prev_w, step_x, step_y, step_w,
                 color, alpha, prev_scale, step_scale,
             )
@@ -2204,7 +2204,7 @@ class PlayView3D(QWidget):
         draw_depth, draw_end_depth = draw_depths
         start_world_y = _air_path_world_y(note)
         end_world_y = _air_path_world_y(note, end=True)
-        start_cell, start_width, start_world_y, draw_depth = _clip_air_sustain_start(
+        start_cell, start_width, start_world_y, draw_depth = _clip_air_path_start(
             note.cell,
             note.width,
             start_world_y,
@@ -2299,7 +2299,7 @@ class PlayView3D(QWidget):
         draw_depth, draw_end_depth = draw_depths
         start_world_y = _air_path_world_y(note)
         end_world_y = _air_path_world_y(note, end=True)
-        start_cell, start_width, start_world_y, draw_depth = _clip_air_sustain_start(
+        start_cell, start_width, start_world_y, draw_depth = _clip_air_path_start(
             note.cell,
             note.width,
             start_world_y,
@@ -2318,7 +2318,7 @@ class PlayView3D(QWidget):
             judge_y
         )
 
-        self._draw_air_sustain_line(
+        self._draw_air_path_line(
             painter, x, y, w, end_x, end_y, end_w,
             color, alpha, scale, end_scale,
         )
@@ -2344,7 +2344,7 @@ class PlayView3D(QWidget):
         draw_depth, draw_end_depth = draw_depths
         start_world_y = _air_path_world_y(note)
         end_world_y = _air_path_world_y(note, end=True)
-        start_cell, start_width, start_world_y, draw_depth = _clip_air_sustain_start(
+        start_cell, start_width, start_world_y, draw_depth = _clip_air_path_start(
             note.cell,
             note.width,
             start_world_y,

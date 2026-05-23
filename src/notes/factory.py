@@ -1,9 +1,20 @@
-"""Shared construction rules for parsed and editor-created notes."""
+"""Shared construction rules for parsed and editor-created notes.
+
+Every note type has two construction paths:
+
+1. **Parse** — reconstruct a ``Note`` from raw ``.c2s`` tab-separated fields.
+2. **Build** — create an editor-default ``Note`` with sensible defaults for
+   the chart editor UI.
+
+All construction functions use **explicit named keyword arguments only** — no
+``**kwargs``, ``**base``, or ``**extras`` dict splatting.  Every argument is
+visible at the call site.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from enum import Enum
+from typing import TYPE_CHECKING, TypedDict
 
 from src.core.const import NoteType
 from src.notes.air import Air, AirHold, AirHoldStart, AirSlide, AirSlideStart, CrashSlide
@@ -15,16 +26,75 @@ from src.notes.slide import Slide, SlideTo
 from src.notes.tap import ExTap, Mine, Tap
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
-
     from src.notes.base import Note
+
 
 DEFAULT_NOTE_DURATION = 384
 
-ParserNoteGroup = Literal["ground", "slide", "air_slide", "air_modifier", "air_sustain"]
+
+# ── Game-accurate note categories ──────────────────────────────────────────
+
+
+class NoteCategory(str, Enum):
+    """Categories matching the CHUNITHM engine classification."""
+
+    GROUND = "ground"  # TAP, MNE
+    CRUSH = "crush"  # CHR (ExTap / double-hit mechanic)
+    FLICK = "flick"  # FLK
+    HOLD = "hold"  # HLD, HXD
+    SLIDE = "slide"  # SLD, SLC, SXD, SXC
+    AIR_ARROW = "air_arrow"  # AIR, AUR, AUL, ADW, ADR, ADL
+    AIR_HOLD = "air_hold"  # AHD, AHX
+    AIR_SLIDE = "air_slide"  # ASD, ASC, ASX
+    AIR_TRACE = "air_trace"  # ALD
+    AIR_SOLID = "air_solid"  # ASO
+    HEAVEN = "heaven"  # HHD, HHX
+
+
+_NOTE_CATEGORIES: dict[NoteType, NoteCategory] = {
+    NoteType.TAP: NoteCategory.GROUND,
+    NoteType.CHR: NoteCategory.CRUSH,
+    NoteType.FLK: NoteCategory.FLICK,
+    NoteType.MNE: NoteCategory.GROUND,
+    NoteType.HLD: NoteCategory.HOLD,
+    NoteType.HXD: NoteCategory.HOLD,
+    NoteType.SLD: NoteCategory.SLIDE,
+    NoteType.SXD: NoteCategory.SLIDE,
+    NoteType.SLC: NoteCategory.SLIDE,
+    NoteType.SXC: NoteCategory.SLIDE,
+    NoteType.AIR: NoteCategory.AIR_ARROW,
+    NoteType.AUR: NoteCategory.AIR_ARROW,
+    NoteType.AUL: NoteCategory.AIR_ARROW,
+    NoteType.ADW: NoteCategory.AIR_ARROW,
+    NoteType.ADR: NoteCategory.AIR_ARROW,
+    NoteType.ADL: NoteCategory.AIR_ARROW,
+    NoteType.AHD: NoteCategory.AIR_HOLD,
+    NoteType.AHX: NoteCategory.AIR_HOLD,
+    NoteType.ALD: NoteCategory.AIR_TRACE,
+    NoteType.ASD: NoteCategory.AIR_SLIDE,
+    NoteType.ASC: NoteCategory.AIR_SLIDE,
+    NoteType.ASX: NoteCategory.AIR_SLIDE,
+    NoteType.ASO: NoteCategory.AIR_SOLID,
+    NoteType.HHD: NoteCategory.HEAVEN,
+    NoteType.HHX: NoteCategory.HEAVEN,
+}
+
+
+# ── Utility ────────────────────────────────────────────────────────────────
+
+
+def int_from_float(value: str) -> int:
+    """Parse ``.c2s`` integer fields that may be emitted with a decimal point."""
+    return int(float(value))
+
+
+def _valid_note_geometry(cell: int, width: int) -> bool:
+    return 0 <= cell <= 15 and 1 <= width <= 16 and cell + width <= 16
 
 
 class NoteHead(TypedDict):
+    """The first five columns common to every ``.c2s`` note line."""
+
     measure: int
     offset: int
     cell: int
@@ -32,28 +102,10 @@ class NoteHead(TypedDict):
     data: tuple[str, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class NoteFactorySpec:
-    parse: Callable[[NoteType, NoteHead], Note] | None
-    build_editor: Callable[[dict[str, Any], int, dict[str, Any]], Note] | None
-    parser_group: ParserNoteGroup
-
-
-def int_from_float(value: str) -> int:
-    """Parse .c2s integer fields that may be emitted with a decimal point."""
-    return int(float(value))
-
-
-def valid_note_geometry(cell: int, width: int) -> bool:
-    """Return whether lane geometry fits inside the 16-lane playfield."""
-    return 0 <= cell <= 15 and 1 <= width <= 16 and cell + width <= 16
-
-
 def parse_note_head(args: list[str], *, validate_geometry: bool = False) -> NoteHead | None:
-    """Parse common .c2s note columns, preserving parser tolerance by default."""
+    """Parse common ``.c2s`` note columns, preserving parser tolerance by default."""
     if len(args) < 4:
         return None
-
     try:
         measure = int_from_float(args[0])
         offset = int_from_float(args[1])
@@ -61,191 +113,379 @@ def parse_note_head(args: list[str], *, validate_geometry: bool = False) -> Note
         width = int_from_float(args[3])
     except (ValueError, TypeError):
         return None
-
-    if validate_geometry and (measure < 0 or offset < 0 or not valid_note_geometry(cell, width)):
+    if validate_geometry and (measure < 0 or offset < 0 or not _valid_note_geometry(cell, width)):
         return None
-
-    return {
-        "measure": measure,
-        "offset": offset,
-        "cell": cell,
-        "width": width,
-        "data": tuple(args[4:]),
-    }
+    return NoteHead(measure=measure, offset=offset, cell=cell, width=width, data=tuple(args[4:]))
 
 
 def clamp_note_geometry(cell: int, width: int) -> tuple[int, int]:
     """Clamp note lane geometry to the 16-lane CHUNITHM playfield."""
-    clamped_cell = max(0, min(15, int(cell)))
-    clamped_width = max(1, min(16 - clamped_cell, int(width)))
-    return clamped_cell, clamped_width
+    c = max(0, min(15, int(cell)))
+    w = max(1, min(16 - c, int(width)))
+    return c, w
 
 
-def _base_kwargs(note_type: NoteType, head: NoteHead) -> dict[str, Any]:
-    return {
-        "note_type": note_type,
-        "measure": head["measure"],
-        "offset": head["offset"],
-        "cell": head["cell"],
-        "width": head["width"],
-    }
+# ── Parse functions (per NoteType, one-to-one with .c2s format) ────────────
 
 
 def _parse_tap(note_type: NoteType, head: NoteHead) -> Note:
-    return Tap(**_base_kwargs(note_type, head))
+    return Tap(
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+    )
 
 
-def _parse_mine(note_type: NoteType, head: NoteHead) -> Note:
-    return Mine(**_base_kwargs(note_type, head))
-
-
-def _parse_extap(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
-    return ExTap(**_base_kwargs(note_type, head), animation=fields["animation"])
+def _parse_chr(note_type: NoteType, head: NoteHead) -> Note:
+    f = parse_schema_fields(note_type, head["data"])
+    return ExTap(
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        animation=f["animation"],
+    )
 
 
 def _parse_flick(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
-    return Flick(**_base_kwargs(note_type, head), direction=fields["direction"])
+    f = parse_schema_fields(note_type, head["data"])
+    return Flick(
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        direction=f["direction"],
+    )
+
+
+def _parse_mine(note_type: NoteType, head: NoteHead) -> Note:
+    return Mine(
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+    )
 
 
 def _parse_hold(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
+    f = parse_schema_fields(note_type, head["data"])
     return Hold(
-        **_base_kwargs(note_type, head),
-        duration=fields["duration"],
-        animation=fields.get("animation"),
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        duration=f["duration"],
+        animation=f.get("animation"),
     )
 
 
 def _parse_slide(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
+    f = parse_schema_fields(note_type, head["data"])
     return SlideTo(
-        **_base_kwargs(note_type, head),
-        duration=fields["duration"],
-        end_cell=fields["end_cell"],
-        end_width=fields["end_width"],
-        target_id=fields.get("target_id"),
-        animation=fields.get("animation"),
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        duration=f["duration"],
+        end_cell=f["end_cell"],
+        end_width=f["end_width"],
+        target_id=f.get("target_id"),
+        animation=f.get("animation"),
         is_visible=note_type.value.endswith("D"),
     )
 
 
-def _parse_air(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
+def _parse_air_arrow(note_type: NoteType, head: NoteHead) -> Note:
+    f = parse_schema_fields(note_type, head["data"])
     return Air(
-        **_base_kwargs(note_type, head),
-        target_note=fields["target_note"],
-        color=fields.get("color", "DEF"),
-        color_is_explicit="color" in fields,
-    )
-
-
-def _parse_air_hold_start(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
-    return AirHoldStart(
-        **_base_kwargs(note_type, head),
-        target_note=fields["target_note"],
-        duration=fields["duration"],
-        color=fields.get("color", "DEF"),
-        color_is_explicit="color" in fields,
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        target_note=f["target_note"],
+        color=f.get("color", "DEF"),
+        color_is_explicit="color" in f,
     )
 
 
 def _parse_air_hold(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
-    return AirHold(
-        **_base_kwargs(note_type, head),
-        target_note=fields["target_note"],
-        duration=fields["duration"],
-        color=fields.get("color", "DEF"),
+    f = parse_schema_fields(note_type, head["data"])
+    return AirHoldStart(
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        target_note=f["target_note"],
+        duration=f["duration"],
+        color=f.get("color", "DEF"),
+        color_is_explicit="color" in f,
     )
 
 
-def _parse_crash_slide(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
+def _parse_air_hold_action(note_type: NoteType, head: NoteHead) -> Note:
+    f = parse_schema_fields(note_type, head["data"])
+    return AirHold(
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        target_note=f["target_note"],
+        duration=f["duration"],
+        color=f["color"],
+    )
+
+
+def _parse_air_trace(note_type: NoteType, head: NoteHead) -> Note:
+    f = parse_schema_fields(note_type, head["data"])
     return CrashSlide(
-        **_base_kwargs(note_type, head),
-        crush_interval=fields["crush_interval"],
-        starting_height=fields["starting_height"],
-        duration=fields["duration"],
-        end_cell=fields["end_cell"],
-        end_width=fields["end_width"],
-        target_height=fields["target_height"],
-        color=fields["color"],
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        crush_interval=f["crush_interval"],
+        starting_height=f["starting_height"],
+        duration=f["duration"],
+        end_cell=f["end_cell"],
+        end_width=f["end_width"],
+        target_height=f["target_height"],
+        color=f["color"],
     )
 
 
 def _parse_air_slide(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
+    f = parse_schema_fields(note_type, head["data"])
     return AirSlide(
-        **_base_kwargs(note_type, head),
-        target_note=fields["target_note"],
-        starting_height=fields["starting_height"],
-        duration=fields["duration"],
-        end_cell=fields["end_cell"],
-        end_width=fields["end_width"],
-        target_height=fields["target_height"],
-        color=fields["color"],
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        target_note=f["target_note"],
+        starting_height=f["starting_height"],
+        duration=f["duration"],
+        end_cell=f["end_cell"],
+        end_width=f["end_width"],
+        target_height=f["target_height"],
+        color=f["color"],
     )
 
 
 def _parse_air_solid(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
+    f = parse_schema_fields(note_type, head["data"])
     return AirSolid(
-        **_base_kwargs(note_type, head),
-        starting_height=fields["starting_height"],
-        starting_depth=fields["starting_depth"],
-        duration=fields["duration"],
-        end_cell=fields["end_cell"],
-        end_width=fields["end_width"],
-        target_height=fields["target_height"],
-        target_depth=fields["target_depth"],
-        color=fields["color"],
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        starting_height=f["starting_height"],
+        starting_depth=f["starting_depth"],
+        duration=f["duration"],
+        end_cell=f["end_cell"],
+        end_width=f["end_width"],
+        target_height=f["target_height"],
+        target_depth=f["target_depth"],
+        color=f["color"],
     )
 
 
 def _parse_heaven_hold(note_type: NoteType, head: NoteHead) -> Note:
-    fields = parse_schema_fields(note_type, head["data"])
+    f = parse_schema_fields(note_type, head["data"])
     return HeavenHold(
-        **_base_kwargs(note_type, head),
-        starting_height=fields["starting_height"],
-        duration=fields["duration"],
-        end_cell=fields["end_cell"],
-        end_width=fields["end_width"],
-        target_height=fields["target_height"],
-        heaven_id=fields["heaven_id"],
-        animation=fields.get("animation"),
+        note_type=note_type,
+        measure=head["measure"],
+        offset=head["offset"],
+        cell=head["cell"],
+        width=head["width"],
+        starting_height=f["starting_height"],
+        duration=f["duration"],
+        end_cell=f["end_cell"],
+        end_width=f["end_width"],
+        target_height=f["target_height"],
+        heaven_id=f["heaven_id"],
+        animation=f.get("animation"),
     )
 
 
-def _end_geom(cell: int, width: int, end_cell: Any, end_width: Any) -> tuple[int, int]:
-    return clamp_note_geometry(
-        cell if end_cell is None else end_cell,
-        width if end_width is None else end_width,
+_NOTE_PARSERS: dict[NoteType, type] = {
+    NoteType.TAP: _parse_tap,
+    NoteType.CHR: _parse_chr,
+    NoteType.FLK: _parse_flick,
+    NoteType.MNE: _parse_mine,
+    NoteType.HLD: _parse_hold,
+    NoteType.HXD: _parse_hold,
+    NoteType.SLD: _parse_slide,
+    NoteType.SXD: _parse_slide,
+    NoteType.SLC: _parse_slide,
+    NoteType.SXC: _parse_slide,
+    NoteType.AIR: _parse_air_arrow,
+    NoteType.AUR: _parse_air_arrow,
+    NoteType.AUL: _parse_air_arrow,
+    NoteType.ADW: _parse_air_arrow,
+    NoteType.ADR: _parse_air_arrow,
+    NoteType.ADL: _parse_air_arrow,
+    NoteType.AHD: _parse_air_hold,
+    NoteType.AHX: _parse_air_hold_action,
+    NoteType.ALD: _parse_air_trace,
+    NoteType.ASD: _parse_air_slide,
+    NoteType.ASC: _parse_air_slide,
+    NoteType.ASX: _parse_air_slide,
+    NoteType.ASO: _parse_air_solid,
+    NoteType.HHD: _parse_heaven_hold,
+    NoteType.HHX: _parse_heaven_hold,
+}
+
+
+# ── Complex editor builders (notes that need geometry/step wrapping) ───────
+
+
+def _build_slide(  # noqa: PLR0913
+    note_type: NoteType,
+    measure: int,
+    offset: int,
+    cell: int,
+    width: int,
+    parent: Note | None = None,
+    duration: int = DEFAULT_NOTE_DURATION,
+    end_cell: int | None = None,
+    end_width: int | None = None,
+    **_ignored: object,
+) -> Note:
+    ec, ew = clamp_note_geometry(
+        cell if end_cell is None else end_cell, width if end_width is None else end_width
+    )
+    step = SlideTo(
+        note_type=note_type,
+        measure=measure,
+        offset=offset,
+        cell=cell,
+        width=width,
+        parent=None,
+        duration=duration,
+        end_cell=ec,
+        end_width=ew,
+        target_id="",
+        animation=None,
+        is_visible=note_type in {NoteType.SLD, NoteType.SXD},
+    )
+    return Slide(
+        note_type=note_type,
+        measure=measure,
+        offset=offset,
+        cell=cell,
+        width=width,
+        parent=parent,
+        steps=(step,),
     )
 
 
-def _build_tap(base: dict[str, Any], _duration: int, _extras: dict[str, Any]) -> Note:
-    return Tap(**base)
+def _build_air_trace(  # noqa: PLR0913
+    note_type: NoteType,
+    measure: int,
+    offset: int,
+    cell: int,
+    width: int,
+    parent: Note | None = None,
+    duration: int = DEFAULT_NOTE_DURATION,
+    end_cell: int | None = None,
+    end_width: int | None = None,
+    **_ignored: object,
+) -> Note:
+    ec, ew = clamp_note_geometry(
+        cell if end_cell is None else end_cell, width if end_width is None else end_width
+    )
+    return CrashSlide(
+        note_type=note_type,
+        measure=measure,
+        offset=offset,
+        cell=cell,
+        width=width,
+        parent=parent,
+        crush_interval=0,
+        starting_height=1.0,
+        duration=duration,
+        end_cell=ec,
+        end_width=ew,
+        target_height=1.0,
+        color="NON",
+    )
 
 
-def _build_extap(base: dict[str, Any], _duration: int, _extras: dict[str, Any]) -> Note:
-    return ExTap(**base, animation="0")
+def _build_air_slide(  # noqa: PLR0913
+    note_type: NoteType,
+    measure: int,
+    offset: int,
+    cell: int,
+    width: int,
+    parent: Note | None = None,
+    duration: int = DEFAULT_NOTE_DURATION,
+    end_cell: int | None = None,
+    end_width: int | None = None,
+    target_note: str | None = None,
+    **_ignored: object,
+) -> Note:
+    ec, ew = clamp_note_geometry(
+        cell if end_cell is None else end_cell, width if end_width is None else end_width
+    )
+    step = AirSlide(
+        note_type=note_type,
+        measure=measure,
+        offset=offset,
+        cell=cell,
+        width=width,
+        parent=None,
+        target_note=target_note or "DEF",
+        starting_height=1.0,
+        duration=duration,
+        end_cell=ec,
+        end_width=ew,
+        target_height=1.0,
+        color="DEF",
+    )
+    return AirSlideStart(
+        note_type=note_type,
+        measure=measure,
+        offset=offset,
+        cell=cell,
+        width=width,
+        parent=parent,
+        steps=(step,),
+    )
 
 
-def _build_flick(base: dict[str, Any], _duration: int, _extras: dict[str, Any]) -> Note:
-    return Flick(**base, direction="L")
-
-
-def _build_mine(base: dict[str, Any], _duration: int, _extras: dict[str, Any]) -> Note:
-    return Mine(**base)
-
-
-def _build_air_solid(base: dict[str, Any], duration: int, extras: dict[str, Any]) -> Note:
-    ec, ew = _end_geom(base["cell"], base["width"], extras.get("end_cell"), extras.get("end_width"))
+def _build_air_solid(  # noqa: PLR0913
+    note_type: NoteType,
+    measure: int,
+    offset: int,
+    cell: int,
+    width: int,
+    parent: Note | None = None,
+    duration: int = DEFAULT_NOTE_DURATION,
+    end_cell: int | None = None,
+    end_width: int | None = None,
+    **_ignored: object,
+) -> Note:
+    ec, ew = clamp_note_geometry(
+        cell if end_cell is None else end_cell, width if end_width is None else end_width
+    )
     return AirSolid(
-        **base,
+        note_type=note_type,
+        measure=measure,
+        offset=offset,
+        cell=cell,
+        width=width,
+        parent=parent,
         starting_height=1.0,
         starting_depth=1.0,
         duration=duration,
@@ -257,154 +497,119 @@ def _build_air_solid(base: dict[str, Any], duration: int, extras: dict[str, Any]
     )
 
 
-def _build_heaven_hold(base: dict[str, Any], duration: int, extras: dict[str, Any]) -> Note:
-    ec, ew = _end_geom(base["cell"], base["width"], extras.get("end_cell"), extras.get("end_width"))
+def _build_heaven_hold(  # noqa: PLR0913
+    note_type: NoteType,
+    measure: int,
+    offset: int,
+    cell: int,
+    width: int,
+    parent: Note | None = None,
+    duration: int = DEFAULT_NOTE_DURATION,
+    end_cell: int | None = None,
+    end_width: int | None = None,
+    **_ignored: object,
+) -> Note:
+    ec, ew = clamp_note_geometry(
+        cell if end_cell is None else end_cell, width if end_width is None else end_width
+    )
     return HeavenHold(
-        **base,
+        note_type=note_type,
+        measure=measure,
+        offset=offset,
+        cell=cell,
+        width=width,
+        parent=parent,
         starting_height=1.0,
         duration=duration,
         end_cell=ec,
         end_width=ew,
         target_height=1.0,
         heaven_id=0,
-        animation="UP" if base["note_type"] == NoteType.HHX else None,
+        animation="UP" if note_type == NoteType.HHX else None,
     )
 
 
-def _build_hold(base: dict[str, Any], duration: int, _extras: dict[str, Any]) -> Note:
-    return Hold(**base, duration=duration)
+# ── Complex builder dispatch ───────────────────────────────────────────────
 
-
-def _build_slide(base: dict[str, Any], duration: int, extras: dict[str, Any]) -> Note:
-    ec, ew = _end_geom(base["cell"], base["width"], extras.get("end_cell"), extras.get("end_width"))
-    step = SlideTo(
-        **base,
-        duration=duration,
-        end_cell=ec,
-        end_width=ew,
-        target_id="",
-        animation=None,
-        is_visible=base["note_type"] in {NoteType.SLD, NoteType.SXD},
-    )
-    return Slide(**base, steps=(step,))
-
-
-def _build_air(base: dict[str, Any], _duration: int, extras: dict[str, Any]) -> Note:
-    return Air(**base, target_note=extras.get("target_note", "DEF"))
-
-
-def _build_air_hold_start(base: dict[str, Any], duration: int, extras: dict[str, Any]) -> Note:
-    return AirHoldStart(**base, target_note=extras.get("target_note", "DEF"), duration=duration)
-
-
-def _build_air_hold(base: dict[str, Any], duration: int, extras: dict[str, Any]) -> Note:
-    return AirHold(
-        **base,
-        target_note=extras.get("target_note", "DEF"),
-        duration=duration,
-        color="DEF",
-    )
-
-
-def _build_air_trace(base: dict[str, Any], duration: int, extras: dict[str, Any]) -> Note:
-    ec, ew = _end_geom(base["cell"], base["width"], extras.get("end_cell"), extras.get("end_width"))
-    return CrashSlide(
-        **base,
-        crush_interval=0,
-        starting_height=1.0,
-        duration=duration,
-        end_cell=ec,
-        end_width=ew,
-        target_height=1.0,
-        color="NON",
-    )
-
-
-def _build_air_slide(base: dict[str, Any], duration: int, extras: dict[str, Any]) -> Note:
-    ec, ew = _end_geom(base["cell"], base["width"], extras.get("end_cell"), extras.get("end_width"))
-    step = AirSlide(
-        **base,
-        target_note=extras.get("target_note", "DEF"),
-        starting_height=1.0,
-        duration=duration,
-        end_cell=ec,
-        end_width=ew,
-        target_height=1.0,
-        color="DEF",
-    )
-    return AirSlideStart(**base, steps=(step,))
-
-
-_NOTE_FACTORIES: dict[NoteType, NoteFactorySpec] = {
-    NoteType.TAP: NoteFactorySpec(_parse_tap, _build_tap, "ground"),
-    NoteType.CHR: NoteFactorySpec(_parse_extap, _build_extap, "ground"),
-    NoteType.FLK: NoteFactorySpec(_parse_flick, _build_flick, "ground"),
-    NoteType.MNE: NoteFactorySpec(_parse_mine, _build_mine, "ground"),
-    NoteType.HLD: NoteFactorySpec(_parse_hold, _build_hold, "ground"),
-    NoteType.HXD: NoteFactorySpec(_parse_hold, _build_hold, "ground"),
-    NoteType.SLD: NoteFactorySpec(_parse_slide, _build_slide, "slide"),
-    NoteType.SXD: NoteFactorySpec(_parse_slide, _build_slide, "slide"),
-    NoteType.SLC: NoteFactorySpec(_parse_slide, _build_slide, "slide"),
-    NoteType.SXC: NoteFactorySpec(_parse_slide, _build_slide, "slide"),
-    NoteType.AIR: NoteFactorySpec(_parse_air, _build_air, "air_modifier"),
-    NoteType.AUR: NoteFactorySpec(_parse_air, _build_air, "air_modifier"),
-    NoteType.AUL: NoteFactorySpec(_parse_air, _build_air, "air_modifier"),
-    NoteType.ADW: NoteFactorySpec(_parse_air, _build_air, "air_modifier"),
-    NoteType.ADR: NoteFactorySpec(_parse_air, _build_air, "air_modifier"),
-    NoteType.ADL: NoteFactorySpec(_parse_air, _build_air, "air_modifier"),
-    NoteType.AHD: NoteFactorySpec(_parse_air_hold_start, _build_air_hold_start, "air_sustain"),
-    NoteType.AHX: NoteFactorySpec(_parse_air_hold, _build_air_hold, "air_sustain"),
-    NoteType.ALD: NoteFactorySpec(_parse_crash_slide, _build_air_trace, "air_sustain"),
-    NoteType.ASD: NoteFactorySpec(_parse_air_slide, _build_air_slide, "air_slide"),
-    NoteType.ASC: NoteFactorySpec(_parse_air_slide, _build_air_slide, "air_slide"),
-    NoteType.ASX: NoteFactorySpec(_parse_air_slide, None, "air_slide"),
-    NoteType.ASO: NoteFactorySpec(_parse_air_solid, _build_air_solid, "ground"),
-    NoteType.HHD: NoteFactorySpec(_parse_heaven_hold, _build_heaven_hold, "ground"),
-    NoteType.HHX: NoteFactorySpec(_parse_heaven_hold, _build_heaven_hold, "ground"),
+_COMPLEX_BUILDERS: dict[NoteType, type] = {
+    NoteType.SLD: _build_slide,
+    NoteType.SXD: _build_slide,
+    NoteType.SLC: _build_slide,
+    NoteType.SXC: _build_slide,
+    NoteType.ALD: _build_air_trace,
+    NoteType.ASD: _build_air_slide,
+    NoteType.ASC: _build_air_slide,
+    NoteType.ASO: _build_air_solid,
+    NoteType.HHD: _build_heaven_hold,
+    NoteType.HHX: _build_heaven_hold,
 }
 
-NOTE_FACTORIES: Mapping[NoteType, NoteFactorySpec] = _NOTE_FACTORIES
 
-PARSER_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    note_type for note_type, spec in _NOTE_FACTORIES.items() if spec.parse is not None
-)
-PARSER_NOTE_TYPE_VALUES: frozenset[str] = frozenset(
-    note_type.value for note_type in PARSER_NOTE_TYPES
-)
-EDITOR_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    note_type for note_type, spec in _NOTE_FACTORIES.items() if spec.build_editor is not None
-)
-SLIDE_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    note_type for note_type, spec in _NOTE_FACTORIES.items() if spec.parser_group == "slide"
-)
-AIR_SLIDE_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    note_type for note_type, spec in _NOTE_FACTORIES.items() if spec.parser_group == "air_slide"
-)
-AIR_MODIFIER_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    note_type for note_type, spec in _NOTE_FACTORIES.items() if spec.parser_group == "air_modifier"
-)
-AIR_SUSTAIN_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    note_type for note_type, spec in _NOTE_FACTORIES.items() if spec.parser_group == "air_sustain"
-)
+# ── Public category frozensets ─────────────────────────────────────────────
 
+
+def _notes_in_category(cat: NoteCategory) -> frozenset[NoteType]:
+    return frozenset(nt for nt, c in _NOTE_CATEGORIES.items() if c == cat)
+
+
+GROUND_NOTE_TYPES: frozenset[NoteType] = (
+    _notes_in_category(NoteCategory.GROUND)
+    | _notes_in_category(NoteCategory.HOLD)
+    | _notes_in_category(NoteCategory.SLIDE)
+    | _notes_in_category(NoteCategory.FLICK)
+)
+CRUSH_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.CRUSH)
+FLICK_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.FLICK)
+HOLD_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.HOLD)
+SLIDE_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.SLIDE)
+AIR_ARROW_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.AIR_ARROW)
+AIR_HOLD_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.AIR_HOLD)
+AIR_SLIDE_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.AIR_SLIDE)
+AIR_TRACE_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.AIR_TRACE)
+AIR_SOLID_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.AIR_SOLID)
+HEAVEN_NOTE_TYPES: frozenset[NoteType] = _notes_in_category(NoteCategory.HEAVEN)
+
+PARSER_NOTE_TYPES: frozenset[NoteType] = frozenset(_NOTE_PARSERS)
+PARSER_NOTE_TYPE_VALUES: frozenset[str] = frozenset(nt.value for nt in _NOTE_PARSERS)
+EDITOR_NOTE_TYPES: frozenset[NoteType] = frozenset(_COMPLEX_BUILDERS) | frozenset(
+    {
+        NoteType.TAP,
+        NoteType.CHR,
+        NoteType.FLK,
+        NoteType.MNE,
+        NoteType.HLD,
+        NoteType.HXD,
+        NoteType.AIR,
+        NoteType.AUR,
+        NoteType.AUL,
+        NoteType.ADW,
+        NoteType.ADR,
+        NoteType.ADL,
+        NoteType.AHD,
+        NoteType.AHX,
+    }
+)
 SCHEMA_NOTE_TYPES: frozenset[NoteType] = frozenset(NOTE_SCHEMAS)
 
 
+# ── Public API ─────────────────────────────────────────────────────────────
+
+
 def parse_note(note_type: NoteType, args: list[str]) -> Note | None:
-    """Create a note from .c2s fields, returning ``None`` for malformed lines."""
-    spec = _NOTE_FACTORIES.get(note_type)
-    if spec is None or spec.parse is None:
+    """Create a note from ``.c2s`` fields, returning ``None`` for malformed lines."""
+    parser = _NOTE_PARSERS.get(note_type)
+    if parser is None:
         return None
     head = parse_note_head(args)
     if head is None:
         return None
     try:
-        return spec.parse(note_type, head)
+        return parser(note_type, head)
     except (ValueError, TypeError, IndexError):
         return None
 
 
-def build_editor_note(  # noqa: PLR0913
+def build_editor_note(  # noqa: PLR0913,PLR0911
     note_type: NoteType,
     *,
     measure: int = 0,
@@ -418,23 +623,106 @@ def build_editor_note(  # noqa: PLR0913
     target_note: str | None = None,
 ) -> Note:
     """Create an editor-default note for a supported note type."""
-    spec = _NOTE_FACTORIES.get(note_type)
-    if spec is None or spec.build_editor is None:
-        raise ValueError(f"Unsupported note type: {note_type.value}")
-
     cell, width = clamp_note_geometry(cell, width)
-    base = {
-        "note_type": note_type,
-        "measure": max(0, int(measure)),
-        "offset": max(0, int(offset)),
-        "cell": cell,
-        "width": width,
-        "parent": parent,
-    }
-    extras = {
-        "end_cell": end_cell,
-        "end_width": end_width,
-        "target_note": target_note,
-    }
     note_duration = max(1, int(duration or DEFAULT_NOTE_DURATION))
-    return spec.build_editor(base, note_duration, extras)
+    m = max(0, int(measure))
+    o = max(0, int(offset))
+
+    # Complex builders (geometry / step-wrapping logic)
+    builder = _COMPLEX_BUILDERS.get(note_type)
+    if builder is not None:
+        return builder(
+            note_type=note_type,
+            measure=m,
+            offset=o,
+            cell=cell,
+            width=width,
+            parent=parent,
+            duration=note_duration,
+            end_cell=end_cell,
+            end_width=end_width,
+            target_note=target_note,
+        )
+
+    # Simple builders — each just creates the note with base fields + 1-2 defaults
+    if note_type in {NoteType.TAP, NoteType.MNE}:
+        cls = Tap if note_type == NoteType.TAP else Mine
+        return cls(note_type=note_type, measure=m, offset=o, cell=cell, width=width, parent=parent)
+
+    if note_type == NoteType.CHR:
+        return ExTap(
+            note_type=note_type,
+            measure=m,
+            offset=o,
+            cell=cell,
+            width=width,
+            parent=parent,
+            animation="0",
+        )
+
+    if note_type == NoteType.FLK:
+        return Flick(
+            note_type=note_type,
+            measure=m,
+            offset=o,
+            cell=cell,
+            width=width,
+            parent=parent,
+            direction="L",
+        )
+
+    if note_type in {NoteType.HLD, NoteType.HXD}:
+        return Hold(
+            note_type=note_type,
+            measure=m,
+            offset=o,
+            cell=cell,
+            width=width,
+            parent=parent,
+            duration=note_duration,
+        )
+
+    if note_type in {
+        NoteType.AIR,
+        NoteType.AUR,
+        NoteType.AUL,
+        NoteType.ADW,
+        NoteType.ADR,
+        NoteType.ADL,
+    }:
+        return Air(
+            note_type=note_type,
+            measure=m,
+            offset=o,
+            cell=cell,
+            width=width,
+            parent=parent,
+            target_note=target_note or "DEF",
+        )
+
+    if note_type == NoteType.AHD:
+        return AirHoldStart(
+            note_type=note_type,
+            measure=m,
+            offset=o,
+            cell=cell,
+            width=width,
+            parent=parent,
+            target_note=target_note or "DEF",
+            duration=note_duration,
+        )
+
+    if note_type == NoteType.AHX:
+        return AirHold(
+            note_type=note_type,
+            measure=m,
+            offset=o,
+            cell=cell,
+            width=width,
+            parent=parent,
+            target_note=target_note or "DEF",
+            duration=note_duration,
+            color="DEF",
+        )
+
+    raise ValueError(f"Unsupported note type: {note_type.value}")

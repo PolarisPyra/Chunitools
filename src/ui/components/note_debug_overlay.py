@@ -16,7 +16,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from src.core.const import AIR_ARROW_NOTES, NoteType
+from src.core.const import AIR_ARROW_NOTES, AIR_NOTE_TYPES, NoteType
 from src.ui import theme
 from src.ui.theme.notes import get_note_color
 
@@ -28,8 +28,9 @@ if TYPE_CHECKING:
 
 
 AIR_ACTION_DEBUG_ANCHOR_TYPES = frozenset(
-    {NoteType.ASD, NoteType.ASC, NoteType.AHD}
+    {NoteType.ASD, NoteType.ASC, NoteType.AHD, NoteType.AHX, NoteType.ASX}
 )
+"""Air notes whose debug label anchors to the *end* of the note (action bar)."""
 AIR_ARROW_DEBUG_LABEL_OFFSET = 44.0
 DEFAULT_DEBUG_LABEL_OFFSET = 18.0
 
@@ -116,11 +117,11 @@ class NoteDebugOverlay(QWidget):
         notes = self._get_visible_notes()
         for note in notes:
             nt_val = note.note_type.value
-            if not viewport.visible_note_types.get(nt_val, True):
+            # In debug overlay, always show air notes regardless of visibility
+            if not viewport.visible_note_types.get(nt_val, True) and note.note_type not in AIR_NOTE_TYPES:
                 composite_types = {
                     NoteType.HLD, NoteType.HXD, NoteType.SLD, NoteType.SXD,
-                    NoteType.SLC, NoteType.SXC, NoteType.ASD, NoteType.ASC,
-                    NoteType.ASX, NoteType.AHD, NoteType.AHX, NoteType.ALD,
+                    NoteType.SLC, NoteType.SXC,
                 }
                 if note.note_type not in composite_types:
                     continue

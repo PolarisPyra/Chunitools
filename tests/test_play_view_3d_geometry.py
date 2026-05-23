@@ -33,7 +33,7 @@ from src.ui.components.play_view import (
     _air_trace_width_factor_from_g0,
     _air_trace_world_y_from_g0,
     _chart_air_height_to_g0,
-    _clip_air_sustain_start,
+    _clip_air_path_start,
     _note_screen_span,
     _project_point,
     _projected_note_height,
@@ -97,8 +97,8 @@ def test_sustain_depths_clip_crossing_segments_at_judge_line() -> None:
     assert _sustain_draw_depths(-4.0, -2.0) is None
 
 
-def test_air_sustain_start_clipping_interpolates_lane_width_and_height() -> None:
-    cell, width, world_y, depth = _clip_air_sustain_start(
+def test_air_path_start_clipping_interpolates_lane_width_and_height() -> None:
+    cell, width, world_y, depth = _clip_air_path_start(
         0.0,
         2.0,
         0.0,
@@ -349,7 +349,7 @@ def test_air_slide_endpoint_bar_uses_trace_height_not_action_height(monkeypatch)
 
     action_bars: list[tuple[float, float]] = []
     monkeypatch.setattr(view, "_draw_tap_quad", lambda *args, **kwargs: None)
-    monkeypatch.setattr(view, "_draw_air_sustain_line", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
     monkeypatch.setattr(
         view,
@@ -423,7 +423,7 @@ def test_air_slide_final_action_step_draws_one_3d_bar(monkeypatch) -> None:
 
     action_bars: list[tuple[float, float]] = []
     monkeypatch.setattr(view, "_draw_tap_quad", lambda *args, **kwargs: None)
-    monkeypatch.setattr(view, "_draw_air_sustain_line", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
     monkeypatch.setattr(
         view,
@@ -561,7 +561,7 @@ def test_parented_asc_chain_does_not_draw_floating_end_cap(monkeypatch) -> None:
     tap_quads: list[object] = []
     action_bars: list[tuple[float, float]] = []
     monkeypatch.setattr(view, "_draw_tap_quad", lambda *args: tap_quads.append(args))
-    monkeypatch.setattr(view, "_draw_air_sustain_line", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
     monkeypatch.setattr(
         view,
@@ -1037,7 +1037,7 @@ def test_parented_asc_chain_starts_path_from_chr_anchor(monkeypatch) -> None:
 
     monkeypatch.setattr(view, "_air_path_screen_span_at", record_projection)
     monkeypatch.setattr(view, "_draw_air_lift_connector", lambda *args: None)
-    monkeypatch.setattr(view, "_draw_air_sustain_line", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_action_bar_3d", lambda *args: None)
 
@@ -1106,7 +1106,7 @@ def test_timeline_anchored_chr_air_slide_does_not_draw_fake_start_cap(monkeypatc
         lambda _painter, *_args, **_kwargs: drawn_caps.append(_args[6].note_type),
     )
     monkeypatch.setattr(view, "_draw_air_lift_connector", lambda *args: None)
-    monkeypatch.setattr(view, "_draw_air_sustain_line", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_action_bar_3d", lambda *args: None)
 
@@ -1458,7 +1458,7 @@ def test_play_view_keeps_crossing_sustains_but_culls_past_taps(monkeypatch) -> N
     assert drawn_bodies
 
 
-def test_play_view_clips_crossing_air_sustain_paths_to_judge_line(
+def test_play_view_clips_crossing_air_paths_to_judge_line(
     monkeypatch,
 ) -> None:
     app = QApplication.instance() or QApplication([])

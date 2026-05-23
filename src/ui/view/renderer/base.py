@@ -60,8 +60,9 @@ class RendererConstants:
     AIR_SYMBOL_OFFSET: float = 5.0
     BORDER_WIDTH_RATIO: float = 0.1
     CORNER_RADIUS_RATIO: float = 0.3
-    SLIDE_LINE_WIDTH: float = timeline_compat.SUSTAIN_STROKE_WIDTH
-    AIR_SUSTAIN_WIDTH: float = timeline_compat.SUSTAIN_STROKE_WIDTH
+    SLIDE_LINE_WIDTH: float = timeline_compat.HOLD_STROKE_WIDTH
+    AIR_PATH_WIDTH: float = timeline_compat.HOLD_STROKE_WIDTH
+    """Stroke width for air path lines (holds, slides, traces)."""
     TRAPEZOID_HINT_ALPHA: int = 180
     CONTROL_POINT_ALPHA: int = 60
 

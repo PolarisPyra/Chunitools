@@ -40,4 +40,4 @@ def test_renderer_constants_match_verified_editor_gdiplus_values() -> None:
     assert constants.HEAD_HEIGHT == 12.0
     assert constants.ACTION_BAR_HEIGHT == 6.0
     assert constants.SLIDE_LINE_WIDTH == 2.0
-    assert constants.AIR_SUSTAIN_WIDTH == 2.0
+    assert constants.AIR_PATH_WIDTH == 2.0

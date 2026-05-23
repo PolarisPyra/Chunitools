@@ -93,9 +93,10 @@ TARGET_NOTE_FAMILIES: dict[NoteType, frozenset[NoteType]] = {
     NoteType.ASX: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
 }
 AIR_ANCHOR_TYPES: frozenset[NoteType] = AIR_NOTE_TYPES - {NoteType.ALD}
-AIR_SUSTAIN_TYPES: frozenset[NoteType] = frozenset(
+AIR_PATH_TYPES: frozenset[NoteType] = frozenset(
     {NoteType.AHD, NoteType.ASD, NoteType.ASC, NoteType.ASX, NoteType.AHX}
 )
+"""Note types that create active sustained paths in the air region."""
 GROUND_SLIDE_TYPES: frozenset[NoteType] = frozenset(
     {NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}
 )
@@ -656,9 +657,9 @@ class ChartTimeline:
         return candidate
 
     def is_mid_air(self, tick: int, cell: int, width: int) -> bool:
-        """Check if a coordinate is inside an active air sustain path."""
+        """Check if a coordinate is inside an active air path."""
         for note in self.chart.notes:
-            if note.note_type not in AIR_SUSTAIN_TYPES:
+            if note.note_type not in AIR_PATH_TYPES:
                 continue
 
             start = self.note_tick(note)

@@ -21,7 +21,7 @@ class HeavenHoldRendererMixin(RendererMixinSupport):
             return
         start, end = self._air_path_endpoints(note, current_position, timeline)
         color = get_note_color(note.note_type)
-        painter.setPen(QPen(color, self.constants.AIR_SUSTAIN_WIDTH * 2.0))
+        painter.setPen(QPen(color, self.constants.AIR_PATH_WIDTH * 2.0))
         painter.drawLine(start, end)
 
     def _draw_heaven_hold_foreground(

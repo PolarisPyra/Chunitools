@@ -10,7 +10,7 @@ class NoteType(str, enum.Enum):
     """Standard tap note."""
 
     CHR = "CHR"
-    """ExTap note (yellow/gold tap)."""
+    """CRUSH / ExTap note (yellow/gold tap with double-hit mechanic)."""
 
     FLK = "FLK"
     """Flick note."""
@@ -46,7 +46,7 @@ class NoteType(str, enum.Enum):
     """Air Up-Left."""
 
     AHD = "AHD"
-    """Air Hold."""
+    """Air hold — sustained position in the air."""
 
     ADW = "ADW"
     """Air Downwards."""
@@ -58,22 +58,24 @@ class NoteType(str, enum.Enum):
     """Air Down-Left."""
 
     ALD = "ALD"
-    """Air trace/effect; NON creates AIR-ACTION/AIR CRUSH objects."""
+    """Air trace — crushed/trail elements between air points; color NON creates
+    AIR-ACTION/AIR-CRUSH objects."""
 
     ASD = "ASD"
-    """Air slide wrapper."""
+    """Air slide head — start of a sliding path in the air."""
 
     ASC = "ASC"
-    """Air slide control/wrapper."""
+    """Air slide control point — intermediate point along an air slide path."""
 
     AHX = "AHX"
-    """Purple air-action note attached to an air hold."""
+    """Air hold action — purple action bar attached along an air hold (AHD)."""
 
     ASX = "ASX"
-    """Air slide action/end (no terminal, like AHX for air slides)."""
+    """Air slide action — the purple action bar at the end of an air slide (ASD/ASC chain)."""
 
     ASO = "ASO"
-    """Air Solid."""
+    """Air solid — colored solid path between the start lane/height and the
+    target lane/height of an air movement."""
 
     HHD = "HHD"
     """Heaven Hold."""
@@ -163,10 +165,12 @@ class RenderRole(enum.Enum):
     TAP = "tap"
 
 
+# ── Note-type groupings matching CHUNITHM game-engine categories ──────────
+
+# Ground-level notes that occupy the 16-lane playfield
 GROUND_NOTE_TYPES: frozenset[NoteType] = frozenset(
     {
         NoteType.TAP,
-        NoteType.CHR,
         NoteType.HLD,
         NoteType.HXD,
         NoteType.SLD,
@@ -177,6 +181,50 @@ GROUND_NOTE_TYPES: frozenset[NoteType] = frozenset(
         NoteType.MNE,
     }
 )
+
+# CRUSH notes — the ExTap/gold-tap double-hit mechanic
+CRUSH_NOTE_TYPES: frozenset[NoteType] = frozenset({NoteType.CHR})
+
+# ── Air system groupings ───────────────────────────────────────────────────
+
+AIR_ARROW_NOTES: frozenset[NoteType] = frozenset(
+    [
+        NoteType.AIR,
+        NoteType.AUR,
+        NoteType.AUL,
+        NoteType.ADW,
+        NoteType.ADR,
+        NoteType.ADL,
+    ]
+)
+"""Air arrow modifiers that create a hit above the ground note."""
+
+AIR_HOLD_NOTES: frozenset[NoteType] = frozenset([NoteType.AHD, NoteType.AHX])
+"""Air hold chain — a sustained position in the air + optional action bar."""
+
+AIR_SLIDE_NOTES: frozenset[NoteType] = frozenset([NoteType.ASD, NoteType.ASC, NoteType.ASX])
+"""Air slide chain — a sliding path in the air + optional action bar."""
+
+AIR_ACTION_NOTES: frozenset[NoteType] = frozenset([NoteType.AHX, NoteType.ASX])
+"""Air action notes — the purple action bars that appear at the end/along
+air holds (AHX) and air slides (ASX)."""
+
+AIR_TRACE_NOTES: frozenset[NoteType] = frozenset({NoteType.ALD})
+"""Air trace notes — ALD creates crushed/trace effects between air points."""
+
+AIR_SOLID_NOTES: frozenset[NoteType] = frozenset({NoteType.ASO})
+"""Air solid notes — the colored solid air path between start and target."""
+
+# All air-related notes combined (useful for broad "is this air?" checks)
+AIR_NOTE_TYPES: frozenset[NoteType] = frozenset(
+    set(AIR_ARROW_NOTES)
+    | set(AIR_HOLD_NOTES)
+    | set(AIR_SLIDE_NOTES)
+    | set(AIR_TRACE_NOTES)
+    | set(AIR_SOLID_NOTES)
+)
+
+# ── Other constants ────────────────────────────────────────────────────────
 
 AIR_TRACE_COLORS: frozenset[str] = frozenset(
     {
@@ -198,42 +246,4 @@ AIR_TRACE_COLORS: frozenset[str] = frozenset(
     }
 )
 
-# Groupings for easier logic dispatch
-AIR_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    [
-        NoteType.AIR,
-        NoteType.AUR,
-        NoteType.AUL,
-        NoteType.AHD,
-        NoteType.ADW,
-        NoteType.ADR,
-        NoteType.ADL,
-        NoteType.ALD,
-        NoteType.ASD,
-        NoteType.ASC,
-        NoteType.ASX,
-        NoteType.AHX,
-    ]
-)
 
-AIR_ARROW_NOTES: frozenset[NoteType] = frozenset(
-    [
-        NoteType.AIR,
-        NoteType.AUR,
-        NoteType.AUL,
-        NoteType.ADW,
-        NoteType.ADR,
-        NoteType.ADL,
-    ]
-)
-
-AIR_SUSTAIN_NOTES: frozenset[NoteType] = frozenset(
-    [
-        NoteType.AHD,
-        NoteType.AHX,
-        NoteType.ALD,
-        NoteType.ASD,
-        NoteType.ASC,
-        NoteType.ASX,
-    ]
-)

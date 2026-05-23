@@ -542,7 +542,7 @@ def test_air_hold_start_draws_action_bar_at_end():
     ]
 
 
-def test_air_hold_action_draws_green_air_sustain_line():
+def test_air_hold_action_draws_green_air_path_line():
     from src.core.metadata import parse_c2s
     from src.ui.theme.notes import get_note_color
     from src.ui.view.chart_renderer import ChartRenderer
@@ -571,7 +571,7 @@ def test_air_hold_action_draws_green_air_sustain_line():
     assert len(painter.lines) == 1
     color, width, start, end = painter.lines[0]
     assert color.rgba() == get_note_color(NoteType.AHD).rgba()
-    assert width == renderer.constants.AIR_SUSTAIN_WIDTH
+    assert width == renderer.constants.AIR_PATH_WIDTH
     assert start.y() == pytest.approx(
         renderer.projection.y(timeline.note_abs_pos(ahx), 0.0)
     )
