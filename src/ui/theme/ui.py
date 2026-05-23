@@ -1,10 +1,11 @@
 """UI surface tokens and Qt helpers."""
 
 from __future__ import annotations
-from PySide6.QtGui import QColor
-
 
 from functools import lru_cache
+
+from PySide6.QtGui import QColor
+
 
 @lru_cache(maxsize=128)
 def qt(value: str | tuple[int, int, int] | tuple[int, int, int, int]) -> QColor:

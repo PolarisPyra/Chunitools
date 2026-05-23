@@ -118,10 +118,17 @@ class NoteDebugOverlay(QWidget):
         for note in notes:
             nt_val = note.note_type.value
             # In debug overlay, always show air notes regardless of visibility
-            if not viewport.visible_note_types.get(nt_val, True) and note.note_type not in AIR_NOTE_TYPES:
+            if (
+                not viewport.visible_note_types.get(nt_val, True)
+                and note.note_type not in AIR_NOTE_TYPES
+            ):
                 composite_types = {
-                    NoteType.HLD, NoteType.HXD, NoteType.SLD, NoteType.SXD,
-                    NoteType.SLC, NoteType.SXC,
+                    NoteType.HLD,
+                    NoteType.HXD,
+                    NoteType.SLD,
+                    NoteType.SXD,
+                    NoteType.SLC,
+                    NoteType.SXC,
                 }
                 if note.note_type not in composite_types:
                     continue
@@ -173,8 +180,14 @@ class NoteDebugOverlay(QWidget):
 
         if self._hovered_note:
             self._draw_hover_tooltip(
-                painter, self._hovered_note, viewport, timeline,
-                projection, render_pos, offset_x, baseline_y,
+                painter,
+                self._hovered_note,
+                viewport,
+                timeline,
+                projection,
+                render_pos,
+                offset_x,
+                baseline_y,
             )
 
         painter.end()

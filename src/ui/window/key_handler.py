@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent  # noqa: TC002
 
 if TYPE_CHECKING:
     from src.ui.window.window import MainWindow

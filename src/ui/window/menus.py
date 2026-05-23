@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QObject, QPointF, Qt
-from PySide6.QtGui import QMouseEvent
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
     QColor,
     QIcon,
     QKeySequence,
+    QMouseEvent,
     QPainter,
     QPixmap,
     QPolygonF,
@@ -17,7 +17,6 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QMenu, QMenuBar
 
 from src.core.config import settings
-from src.core.const import NoteType
 from src.core.const import NoteType
 from src.ui.theme.notes import get_note_color
 
@@ -34,9 +33,8 @@ class MenuCursorFilter(QObject):
                 if action and not action.isSeparator() and action.isEnabled():
                     if watched.cursor().shape() != Qt.CursorShape.PointingHandCursor:
                         watched.setCursor(Qt.CursorShape.PointingHandCursor)
-                else:
-                    if watched.cursor().shape() != Qt.CursorShape.ArrowCursor:
-                        watched.setCursor(Qt.CursorShape.ArrowCursor)
+                elif watched.cursor().shape() != Qt.CursorShape.ArrowCursor:
+                    watched.setCursor(Qt.CursorShape.ArrowCursor)
         return super().eventFilter(watched, event)
 
 

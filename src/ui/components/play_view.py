@@ -196,8 +196,7 @@ def _project_point(
         return 0.0, 0.0
 
     cam_x, cam_y, cam_z = _camera_space(x, y, z)
-    if cam_z >= -0.001:
-        cam_z = -0.001
+    cam_z = min(-0.001, cam_z)
 
     focal = 1.0 / math.tan(math.radians(FOV_DEGREES) / 2.0)
     aspect = viewport_w / viewport_h
@@ -896,7 +895,7 @@ class PlayView3D(QWidget):
             line_x = -FIELD_HALF + LANE_WIDTH * lane
             x_near, y_near = _project_point(line_x, 0.0, LANE_LINE_NEAR_Z, w, h)
             x_far, y_far = _project_point(line_x, 0.0, LANE_LINE_FAR_Z, w, h)
-            alpha = 50 if lane == 0 or lane == self.total_lanes else 24
+            alpha = 50 if lane in (0, self.total_lanes) else 24
             painter.setPen(QPen(QColor(130, 140, 170, alpha), 1))
             painter.drawLine(
                 int(x_far),
@@ -2559,7 +2558,7 @@ class PlayView3D(QWidget):
                 start_height = float(getattr(note, "starting_height", 1.0))
                 target_height = float(getattr(note, "target_height", start_height))
                 curr_height = _lerp(start_height, target_height, progress)
-                curr_world_y = _air_action_world_y_from_chart_height(curr_height)
+                curr_world_y = _air_trace_world_y_from_g0(_chart_air_height_to_g0(curr_height))
                 cx, cy, cw, c_scale = self._air_action_screen_span_at(
                     curr_cell,
                     curr_width,

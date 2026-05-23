@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QElapsedTimer, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeyEvent, QResizeEvent
@@ -25,12 +26,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from typing import TYPE_CHECKING
-
 from src.core.config import USER_CONFIG_DIR, get_sounds_dir, resolve_startup_data_root, settings
-from src.core.write import save_chart_file
 from src.core.const import NoteType
 from src.core.read import DataScanner, MetadataPreview, load_chart_file
+from src.core.write import save_chart_file
 from src.engine.playback import PlaybackController
 
 if TYPE_CHECKING:
@@ -38,12 +37,12 @@ if TYPE_CHECKING:
     from src.notes import Note
 from src.services.playback import PlaybackCoordinator
 from src.ui import theme
-from src.ui.theme.styles import get_main_stylesheet
 from src.ui.components.fps_overlay import FpsOverlay
 from src.ui.components.picker import ChartPicker
 from src.ui.components.play_view import PlayView3D
 from src.ui.components.radar import NoteDensityRadar
 from src.ui.components.viewport import ChartViewport
+from src.ui.theme.styles import get_main_stylesheet
 from src.ui.view.timeline_widget import TimelineWidget
 from src.ui.window import export as export_ops
 from src.ui.window.editor_actions import NoteEditor

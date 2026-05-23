@@ -1,4 +1,5 @@
 from PySide6.QtGui import QColor
+
 from src.core.const import NoteType
 
 NOTE_TAP = "#ff4040"

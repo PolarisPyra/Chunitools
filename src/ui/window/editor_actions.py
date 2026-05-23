@@ -33,8 +33,8 @@ class NoteEditor:
 
     def __init__(self, window: MainWindow) -> None:
         self.w = window
-        from src.ui.window.slide_editor import SlideEditor  # noqa: PLC0415
         from src.ui.window.note_history import NoteHistory  # noqa: PLC0415
+        from src.ui.window.slide_editor import SlideEditor  # noqa: PLC0415
         from src.ui.window.source_opener import SourceFileOpener  # noqa: PLC0415
         self.slides = SlideEditor(window)
         self.history = NoteHistory(window)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import deque
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QFont, QPainter, QPaintEvent, QPainterPath, QPen
+from PySide6.QtGui import QFont, QPainter, QPainterPath, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
 from src.ui import theme
@@ -64,4 +64,6 @@ class FpsOverlay(QWidget):
 
         painter.setFont(QFont(theme.FONT_MONO, 18, QFont.Weight.Normal))
         painter.setPen(theme.qt(theme.TEXT_EDITOR))
-        painter.drawText(bounds.adjusted(0, 12, 0, -2), Qt.AlignmentFlag.AlignCenter, f"{self._fps:.0f}")
+        painter.drawText(
+            bounds.adjusted(0, 12, 0, -2), Qt.AlignmentFlag.AlignCenter, f"{self._fps:.0f}"
+        )

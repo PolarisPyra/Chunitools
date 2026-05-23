@@ -79,7 +79,7 @@ class NoteDensityRadar(QWidget):
             return [0.0] * len(_AXES)
 
         counts = [self._count_axis_notes(chart.notes, axis) for axis in _AXES]
-        max_count = max(max(counts), _MAX_VALUE_FALLBACK)
+        max_count = max(*counts, _MAX_VALUE_FALLBACK)
         return [count / max_count for count in counts]
 
     @staticmethod

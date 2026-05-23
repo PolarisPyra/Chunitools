@@ -65,9 +65,9 @@ class ChartViewport(QWidget):
     note_size_drag_place_requested = Signal(float, int, int)
     note_drag_place_requested = Signal(float, int, float, int)
 
-    def __init__(
+    def __init__(  # noqa: PLR0915
         self, parent: QWidget | None = None, playback_controller: PlaybackController | None = None
-    ) -> None:  # noqa: PLR0915
+    ) -> None:
         super().__init__(parent)
         self.playback_controller = playback_controller
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -363,7 +363,7 @@ class ChartViewport(QWidget):
             self.note_debug_overlay.setGeometry(self.rect())
         self.resized.emit()
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: PLR0911, PLR0912
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: PLR0911, PLR0912, PLR0915
         self.setFocus(Qt.FocusReason.MouseFocusReason)
         if event.button() == Qt.MouseButton.LeftButton:
             if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
@@ -460,7 +460,7 @@ class ChartViewport(QWidget):
         if viewport_y < margin:
             # Move up (scrolling positive Y in our coordinate system)
             return fixed_speed * (1.0 - max(0, viewport_y) / margin)
-        elif viewport_y > height - margin:
+        if viewport_y > height - margin:
             # Move down
             dist = height - viewport_y
             return -fixed_speed * (1.0 - max(0, dist) / margin)
@@ -693,9 +693,8 @@ class ChartViewport(QWidget):
             if is_down:
                 # base_y = y-35, tip_y = y-15 -> range [-40, -10]
                 return (40, 10)
-            else:
-                # base_y = y-8, tip_y = y-28 -> range [-32, 2]
-                return (32, -2)
+            # base_y = y-8, tip_y = y-28 -> range [-32, 2]
+            return (32, -2)
 
         # Default fallback
         return (7, -7)

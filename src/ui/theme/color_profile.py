@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 from PySide6.QtGui import QColor
+
 
 @dataclass(frozen=True)
 class GradientColor:

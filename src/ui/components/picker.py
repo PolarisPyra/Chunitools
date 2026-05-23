@@ -338,7 +338,7 @@ class ChartPicker(QWidget):
     def _active_view(self) -> QListView:
         if self.view_mode == "standard":
             return self.view_std
-        elif self.view_mode == "ultima":
+        if self.view_mode == "ultima":
             return self.view_ult
         return self.view_we
 
