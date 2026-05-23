@@ -275,8 +275,8 @@ def _air_path_world_y(note: Note, *, end: bool = False) -> float | None:
     if note.note_type in (NoteType.AHD, NoteType.AHX):
         g0 = 4.0
         return _air_trace_world_y_from_g0(g0)
-    # Air arrows (AIR, AUR, AUL, ADW, ADR, ADL) float above ground at a
-    # visible air-lane height (g0=4.0 maps to chart height 3.0, mid of 1-5 range)
+    # Air arrows sit just above the ground note they're anchored to,
+    # not at the top of the stem. Use minimum air lane (g0=0, chart height 1.0)
     if note.note_type in {
         NoteType.AIR,
         NoteType.AUR,
@@ -285,7 +285,7 @@ def _air_path_world_y(note: Note, *, end: bool = False) -> float | None:
         NoteType.ADR,
         NoteType.ADL,
     }:
-        return _air_trace_world_y_from_g0(4.0)
+        return _air_trace_world_y_from_g0(0.0)
     return None
 
 
@@ -2013,6 +2013,13 @@ class PlayView3D(QWidget):
 
         if arrow_type is None:
             return
+
+        # When targeting a ground note, the arrow sits on the ground note
+        # at ground level, not at the air slide's elevated height.
+        if target_type not in {"AIR", "AUR", "AUL", "ADW", "ADR", "ADL",
+                                 "AHD", "AHX", "ASD", "ASC", "DEF"}:
+            _, ground_y, _ = _projection_for_depth(depth, self.width(), self.height())
+            y = ground_y
 
         self._draw_or_defer_air_arrow(
             painter,

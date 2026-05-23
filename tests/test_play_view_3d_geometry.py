@@ -516,11 +516,14 @@ def test_parented_asc_start_arrow_uses_ground_chr_anchor(monkeypatch) -> None:
         0.0,
     )
 
-    # Air arrows now keep their caller-provided Y (note's own air height)
+    # Start arrows on ground-note targets render at ground level, not
+    # at the air hold/slide's elevated height. The green stem lifts from
+    # the ground-note arrow upward.
+    _, ground_y, _ = _projection_for_depth(0.0, 1280.0, 720.0)
     assert drawn == [
         (
             pytest.approx(_air_arrow_screen_span(0.0, 4.0, vanish_x, scale)[0]),
-            pytest.approx(path_y),
+            pytest.approx(ground_y),
             pytest.approx(_air_arrow_screen_span(0.0, 4.0, vanish_x, scale)[1]),
             NoteType.AIR,
         )
@@ -762,11 +765,14 @@ def test_ahd_start_arrow_uses_ground_anchor(monkeypatch) -> None:
         0.0,
     )
 
-    # Air arrows now keep their caller-provided Y (note's own air height)
+    # Start arrows on ground-note targets render at ground level, not
+    # at the air hold/slide's elevated height. The green stem lifts from
+    # the ground-note arrow upward.
+    _, ground_y, _ = _projection_for_depth(0.0, 1280.0, 720.0)
     assert drawn == [
         (
             pytest.approx(_air_arrow_screen_span(0.0, 4.0, vanish_x, scale)[0]),
-            pytest.approx(path_y),
+            pytest.approx(ground_y),
             pytest.approx(_air_arrow_screen_span(0.0, 4.0, vanish_x, scale)[1]),
             NoteType.AIR,
         )
@@ -988,11 +994,14 @@ def test_ahx_independent_start_arrow_uses_ground_anchor(monkeypatch) -> None:
         0.0,
     )
 
-    # Air arrows now keep their caller-provided Y (note's own air height)
+    # Start arrows on ground-note targets render at ground level, not
+    # at the air hold/slide's elevated height. The green stem lifts from
+    # the ground-note arrow upward.
+    _, ground_y, _ = _projection_for_depth(0.0, 1280.0, 720.0)
     assert drawn == [
         (
             pytest.approx(_air_arrow_screen_span(0.0, 4.0, vanish_x, scale)[0]),
-            pytest.approx(path_y),
+            pytest.approx(ground_y),
             pytest.approx(_air_arrow_screen_span(0.0, 4.0, vanish_x, scale)[1]),
             NoteType.AIR,
         )
