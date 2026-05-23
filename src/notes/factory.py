@@ -26,6 +26,8 @@ from src.notes.slide import Slide, SlideTo
 from src.notes.tap import ExTap, Mine, Tap
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from src.notes.base import Note
 
 
@@ -318,7 +320,7 @@ def _parse_heaven_hold(note_type: NoteType, head: NoteHead) -> Note:
     )
 
 
-_NOTE_PARSERS: dict[NoteType, type] = {
+_NOTE_PARSERS: dict[NoteType, Callable[[NoteType, NoteHead], Note]] = {
     NoteType.TAP: _parse_tap,
     NoteType.CHR: _parse_chr,
     NoteType.FLK: _parse_flick,
@@ -531,7 +533,7 @@ def _build_heaven_hold(  # noqa: PLR0913
 
 # ── Complex builder dispatch ───────────────────────────────────────────────
 
-_COMPLEX_BUILDERS: dict[NoteType, type] = {
+_COMPLEX_BUILDERS: dict[NoteType, Callable[..., Note]] = {
     NoteType.SLD: _build_slide,
     NoteType.SXD: _build_slide,
     NoteType.SLC: _build_slide,
