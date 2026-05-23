@@ -14,7 +14,6 @@ import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
 from dataclasses import replace
 from pathlib import Path
-from typing import TypedDict
 
 logger = logging.getLogger("chartloading")
 
@@ -38,22 +37,19 @@ from src.core.models import (
     Stop,
 )
 from src.notes import (
-    Air,
-    AirHold,
-    AirHoldStart,
     AirSlide,
     AirSlideStart,
-    AirSolid,
-    CrashSlide,
-    ExTap,
-    Flick,
-    HeavenHold,
-    Hold,
-    Mine,
     Note,
     Slide,
     SlideTo,
-    Tap,
+)
+from src.notes.factory import (
+    AIR_MODIFIER_NOTE_TYPES,
+    AIR_SLIDE_NOTE_TYPES,
+    AIR_SUSTAIN_NOTE_TYPES,
+    PARSER_NOTE_TYPE_VALUES,
+    SLIDE_NOTE_TYPES,
+    parse_note,
 )
 from src.notes.geometry import (
     note_duration,
@@ -82,38 +78,6 @@ DEFAULT_CHART_SUFFIXES = (".c2s",)
 CUSTOM_AUDIO_COMMAND = "AUDIO"
 
 
-# All note-type tokens recognised as playfield objects.
-_NOTE_CMDS: frozenset[NoteType] = frozenset(
-    [
-        NoteType.TAP,
-        NoteType.CHR,
-        NoteType.HLD,
-        NoteType.HXD,
-        NoteType.SLD,
-        NoteType.SLC,
-        NoteType.SXD,
-        NoteType.SXC,
-        NoteType.FLK,
-        NoteType.AIR,
-        NoteType.AUR,
-        NoteType.AUL,
-        NoteType.AHD,
-        NoteType.ADW,
-        NoteType.ADR,
-        NoteType.ADL,
-        NoteType.ALD,
-        NoteType.ASD,
-        NoteType.ASC,
-        NoteType.ASX,
-        NoteType.AHX,
-        NoteType.ASO,
-        NoteType.HHD,
-        NoteType.HHX,
-        NoteType.MNE,
-    ]
-)
-_NOTE_CMD_VALUES: frozenset[str] = frozenset(note_type.value for note_type in _NOTE_CMDS)
-
 _SYSTEM_CMD_VALUES: frozenset[str] = frozenset(
     {
         "SLP",
@@ -125,22 +89,6 @@ _SYSTEM_CMD_VALUES: frozenset[str] = frozenset(
         "CLK",
     }
 )
-SLIDE_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    {NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC}
-)
-AIR_SLIDE_NOTE_TYPES: frozenset[NoteType] = frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX})
-AIR_MODIFIER_NOTE_TYPES: frozenset[NoteType] = frozenset(
-    {NoteType.AIR, NoteType.AUR, NoteType.AUL, NoteType.ADW, NoteType.ADR, NoteType.ADL}
-)
-AIR_SUSTAIN_NOTE_TYPES: frozenset[NoteType] = frozenset({NoteType.AHD, NoteType.ALD, NoteType.AHX})
-
-
-class _NoteHead(TypedDict):
-    measure: int
-    offset: int
-    cell: int
-    width: int
-    data: tuple[str, ...]
 
 
 def _node_text(parent: ET.Element, path: str, default: str = "") -> str:
@@ -160,226 +108,9 @@ def _node_int(parent: ET.Element, path: str, default: int = 0) -> int:
         return default
 
 
-def _parse_int(value: str) -> int:
-    return int(float(value))
-
-
-def _valid_position(cell: int, width: int) -> bool:
-    return 0 <= cell <= 15 and 1 <= width <= 16 and cell + width <= 16
-
-
-def _parse_note_head(args: list[str]) -> _NoteHead | None:
-    if len(args) < 4:
-        return None
-
-    try:
-        measure = _parse_int(args[0])
-        offset = _parse_int(args[1])
-        cell = _parse_int(args[2])
-        width = _parse_int(args[3])
-    except ValueError:
-        return None
-
-    if measure < 0 or offset < 0 or not _valid_position(cell, width):
-        return None
-
-    return {
-        "measure": measure,
-        "offset": offset,
-        "cell": cell,
-        "width": width,
-        "data": tuple(args[4:]),
-    }
-
-
 def _parse_note(note_type: NoteType, args: list[str]) -> Note | None:  # noqa: PLR0911, PLR0912
     """Dispatch note parsing exactly as implemented in nai-rs."""
-    if len(args) < 4:
-        return None
-
-    try:
-        measure = int(float(args[0]))
-        offset = int(float(args[1]))
-        cell = int(float(args[2]))
-        width = int(float(args[3]))
-        data = args[4:]
-
-        if note_type == NoteType.TAP:
-            return Tap(note_type=note_type, measure=measure, offset=offset, cell=cell, width=width)
-
-        if note_type == NoteType.MNE:
-            return Mine(note_type=note_type, measure=measure, offset=offset, cell=cell, width=width)
-
-        if note_type == NoteType.ASO:
-            return AirSolid(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                starting_height=float(data[0]),
-                starting_depth=float(data[1]),
-                duration=int(float(data[2])),
-                end_cell=int(float(data[3])),
-                end_width=int(float(data[4])),
-                target_height=float(data[5]),
-                target_depth=float(data[6]),
-                color=data[7],
-            )
-
-        if note_type in (NoteType.HHD, NoteType.HHX):
-            return HeavenHold(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                starting_height=float(data[0]),
-                duration=int(float(data[1])),
-                end_cell=int(float(data[2])),
-                end_width=int(float(data[3])),
-                target_height=float(data[4]),
-                heaven_id=int(float(data[5])),
-                animation=data[6] if len(data) > 6 else None,
-            )
-
-        if note_type == NoteType.CHR:
-            return ExTap(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                unknown=data[0],
-            )
-
-        if note_type in (NoteType.HLD, NoteType.HXD):
-            duration = int(float(data[0]))
-            animation = data[1] if len(data) > 1 else None
-            return Hold(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                duration=duration,
-                animation=animation,
-            )
-
-        if note_type in (NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC):
-            duration = int(float(data[0]))
-            end_cell = int(float(data[1]))
-            end_width = int(float(data[2]))
-            target_id = data[3] if len(data) > 3 else None
-            animation = data[4] if len(data) > 4 else None
-            is_visible = note_type.endswith("D")
-            return SlideTo(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                duration=duration,
-                end_cell=end_cell,
-                end_width=end_width,
-                target_id=target_id,
-                animation=animation,
-                is_visible=is_visible,
-            )
-
-        if note_type == NoteType.FLK:
-            return Flick(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                unknown=data[0],
-            )
-
-        if note_type == NoteType.AIR:
-            color = data[1] if len(data) > 1 else "DEF"
-            return Air(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                target_note=data[0],
-                color=color,
-            )
-
-        if note_type in (NoteType.AUR, NoteType.AUL, NoteType.ADW, NoteType.ADR, NoteType.ADL):
-            color = data[1] if len(data) > 1 else "DEF"
-            return Air(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                target_note=data[0],
-                color=color,
-            )
-
-        if note_type == NoteType.AHD:
-            return AirHoldStart(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                target_note=data[0],
-                duration=int(float(data[1])),
-            )
-
-        if note_type == NoteType.AHX:
-            return AirHold(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                target_note=data[0],
-                duration=int(float(data[1])),
-                color=data[2] if len(data) > 2 else "DEF",
-            )
-
-        if note_type == NoteType.ALD:
-            return CrashSlide(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                crush_interval=int(float(data[0])),
-                starting_height=float(data[1]),
-                duration=int(float(data[2])),
-                end_cell=int(float(data[3])),
-                end_width=int(float(data[4])),
-                target_height=float(data[5]),
-                color=data[6],
-            )
-
-        if note_type in (NoteType.ASD, NoteType.ASC, NoteType.ASX):
-            return AirSlide(
-                note_type=note_type,
-                measure=measure,
-                offset=offset,
-                cell=cell,
-                width=width,
-                target_note=data[0],
-                starting_height=float(data[1]),
-                duration=int(float(data[2])),
-                end_cell=int(float(data[3])),
-                end_width=int(float(data[4])),
-                target_height=float(data[5]),
-                color=data[6],
-            )
-
-    except (ValueError, TypeError, IndexError):
-        return None
-
-    return None
+    return parse_note(note_type, args)
 
 
 class IChartParser(ABC):
@@ -489,7 +220,7 @@ class C2sParser(IChartParser):
                 self._active_chart.metadata.audio_path = " ".join(args).strip()
             elif command_str in _SYSTEM_CMD_VALUES:
                 _handle_system_command(self._active_chart, command_str, args)
-            elif command_str in _NOTE_CMD_VALUES:
+            elif command_str in PARSER_NOTE_TYPE_VALUES:
                 try:
                     nt = NoteType(command_str)
                     raw_note = (nt, tuple(args))

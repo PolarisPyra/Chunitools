@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-from src.core.const import NoteType
-
-if TYPE_CHECKING:
-    from src.core.models import Chart
-from src.notes import (
+from src.core.const import NoteType  # noqa: TC001
+from src.notes import (  # noqa: TC001
     Air,
     AirHold,
     AirHoldStart,
@@ -27,153 +24,43 @@ from src.notes import (
     SlideTo,
     Tap,
 )
+from src.notes.factory import (
+    DEFAULT_NOTE_DURATION as _DEFAULT_NOTE_DURATION,
+    build_editor_note,
+    clamp_note_geometry as _clamp_note_geometry,
+)
 
-DEFAULT_NOTE_DURATION = 384
+if TYPE_CHECKING:
+    from src.core.models import Chart
 
-# ── Builder registry ────────────────────────────────────────────────────
+DEFAULT_NOTE_DURATION = _DEFAULT_NOTE_DURATION
 
-_Base = dict[str, Any]
-
-
-def _build_tap(b: _Base, **extras: Any) -> Note:
-    return Tap(**b)
-
-
-def _build_extap(b: _Base, **extras: Any) -> Note:
-    return ExTap(**b, unknown="0")
-
-
-def _build_flick(b: _Base, **extras: Any) -> Note:
-    return Flick(**b, unknown="L")
-
-
-def _build_mine(b: _Base, **extras: Any) -> Note:
-    return Mine(**b)
-
-
-def _build_air_solid(b: _Base, duration: int, **extras: Any) -> Note:
-    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
-    return AirSolid(
-        **b,
-        starting_height=1.0,
-        starting_depth=1.0,
-        duration=duration,
-        end_cell=ec,
-        end_width=ew,
-        target_height=1.0,
-        target_depth=1.0,
-        color="DEF",
-    )
-
-
-def _build_heaven_hold(b: _Base, duration: int, **extras: Any) -> Note:
-    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
-    return HeavenHold(
-        **b,
-        starting_height=1.0,
-        duration=duration,
-        end_cell=ec,
-        end_width=ew,
-        target_height=1.0,
-        heaven_id=0,
-        animation="UP" if b["note_type"] == NoteType.HHX else None,
-    )
-
-
-def _build_hold(b: _Base, duration: int, **extras: Any) -> Note:
-    return Hold(**b, duration=duration)
-
-
-def _build_slide(b: _Base, duration: int, **extras: Any) -> Note:
-    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
-    step = SlideTo(
-        **b,
-        duration=duration,
-        end_cell=ec,
-        end_width=ew,
-        target_id="",
-        animation=None,
-        is_visible=b["note_type"] in {NoteType.SLD, NoteType.SXD},
-    )
-    return Slide(**b, steps=(step,))
-
-
-def _build_air(b: _Base, **extras: Any) -> Note:
-    return Air(**b, target_note=extras.get("target_note", "DEF"))
-
-
-def _build_air_hold_start(b: _Base, duration: int, **extras: Any) -> Note:
-    return AirHoldStart(**b, target_note=extras.get("target_note", "DEF"), duration=duration)
-
-
-def _build_air_hold(b: _Base, duration: int, **extras: Any) -> Note:
-    return AirHold(
-        **b, target_note=extras.get("target_note", "DEF"), duration=duration, color="DEF"
-    )
-
-
-def _build_air_trace(b: _Base, duration: int, **extras: Any) -> Note:
-    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
-    return CrashSlide(
-        **b,
-        crush_interval=0,
-        starting_height=1.0,
-        duration=duration,
-        end_cell=ec,
-        end_width=ew,
-        target_height=1.0,
-        color="NON",
-    )
-
-
-def _build_air_slide(b: _Base, duration: int, **extras: Any) -> Note:
-    ec, ew = _end_geom(b["cell"], b["width"], extras.get("end_cell"), extras.get("end_width"))
-    step = AirSlide(
-        **b,
-        target_note=extras.get("target_note", "DEF"),
-        starting_height=1.0,
-        duration=duration,
-        end_cell=ec,
-        end_width=ew,
-        target_height=1.0,
-        color="DEF",
-    )
-    return AirSlideStart(**b, steps=(step,))
-
-
-_NOTE_BUILDERS: dict[NoteType, Any] = {
-    NoteType.TAP: _build_tap,
-    NoteType.CHR: _build_extap,
-    NoteType.FLK: _build_flick,
-    NoteType.MNE: _build_mine,
-    NoteType.ASO: _build_air_solid,
-    NoteType.HHD: _build_heaven_hold,
-    NoteType.HHX: _build_heaven_hold,
-    NoteType.HLD: _build_hold,
-    NoteType.HXD: _build_hold,
-    NoteType.SLD: _build_slide,
-    NoteType.SXD: _build_slide,
-    NoteType.SLC: _build_slide,
-    NoteType.SXC: _build_slide,
-    NoteType.AIR: _build_air,
-    NoteType.AUR: _build_air,
-    NoteType.AUL: _build_air,
-    NoteType.ADW: _build_air,
-    NoteType.ADR: _build_air,
-    NoteType.ADL: _build_air,
-    NoteType.AHD: _build_air_hold_start,
-    NoteType.AHX: _build_air_hold,
-    NoteType.ALD: _build_air_trace,
-    NoteType.ASD: _build_air_slide,
-    NoteType.ASC: _build_air_slide,
-}
-
-
-def _end_geom(cell: int, width: int, end_cell: Any, end_width: Any) -> tuple[int, int]:
-    return clamp_note_geometry(
-        cell if end_cell is None else end_cell,
-        width if end_width is None else end_width,
-    )
+__all__ = [
+    "DEFAULT_NOTE_DURATION",
+    "Air",
+    "AirHold",
+    "AirHoldStart",
+    "AirSlide",
+    "AirSlideStart",
+    "AirSolid",
+    "CrashSlide",
+    "ExTap",
+    "Flick",
+    "HeavenHold",
+    "Hold",
+    "Mine",
+    "Note",
+    "NoteType",
+    "Slide",
+    "SlideTo",
+    "Tap",
+    "add_note",
+    "clamp_note_geometry",
+    "make_note",
+    "move_note",
+    "remove_notes",
+    "snap_abs_pos",
+]
 
 
 # ── Public API ──────────────────────────────────────────────────────────
@@ -191,9 +78,7 @@ def snap_abs_pos(abs_pos: float, resolution: int, subdivisions: int) -> tuple[in
 
 def clamp_note_geometry(cell: int, width: int) -> tuple[int, int]:
     """Clamp note lane geometry to the 16-lane CHUNITHM playfield."""
-    clamped_cell = max(0, min(15, int(cell)))
-    clamped_width = max(1, min(16 - clamped_cell, int(width)))
-    return clamped_cell, clamped_width
+    return _clamp_note_geometry(cell, width)
 
 
 def make_note(  # noqa: PLR0913
@@ -220,27 +105,17 @@ def make_note(  # noqa: PLR0913
     target_note: str | None = None,
 ) -> Note:
     """Create a note with valid default extra fields for the requested type."""
-    cell, width = clamp_note_geometry(cell, width)
-    duration = max(1, int(duration or DEFAULT_NOTE_DURATION))
-    builder = _NOTE_BUILDERS.get(note_type)
-    if builder is None:
-        raise ValueError(f"Unsupported note type: {note_type.value}")
-    return cast(
-        "Note",
-        builder(
-            {
-                "note_type": note_type,
-                "measure": max(0, int(measure)),
-                "offset": max(0, int(offset)),
-                "cell": cell,
-                "width": width,
-                "parent": parent,
-            },
-            duration=duration,
-            end_cell=end_cell,
-            end_width=end_width,
-            target_note=target_note,
-        ),
+    return build_editor_note(
+        note_type,
+        measure=measure,
+        offset=offset,
+        cell=cell,
+        width=width,
+        duration=duration,
+        end_cell=end_cell,
+        end_width=end_width,
+        parent=parent,
+        target_note=target_note,
     )
 
 
