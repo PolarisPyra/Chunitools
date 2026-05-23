@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
 
 from src.core.const import AIR_ARROW_NOTES, GROUND_NOTE_TYPES, NoteType
 from src.notes.air import AirSlideStart
@@ -251,15 +251,19 @@ class AirRendererMixin(RendererMixinSupport):
             return
         ys = self.projection.y(timeline.note_abs_pos(note), current_position)
         ye = self.projection.y(timeline.note_abs_end_pos(note), current_position)
-        xs, ws = self.projection.x(float(note.cell)), self.projection.w(float(note.width))
-        xe, we = self.projection.x(float(note.end_cell)), self.projection.w(float(note.end_width))
+        xs = self.projection.x(float(note.cell))
+        ws = self.projection.w(float(note.width))
+        xe = self.projection.x(float(note.end_cell))
+        we = self.projection.w(float(note.end_width))
         painter.setPen(
             QPen(
                 self._air_base_note_color(note),
                 self.constants.AIR_PATH_WIDTH,
             )
         )
-        painter.drawLine(QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
+        self._draw_bezier_line(painter,
+            QPointF(xs + ws / 2, ys),
+            QPointF(xe + we / 2, ye))
 
     def _draw_air_slide_chain(
         self,
@@ -271,23 +275,62 @@ class AirRendererMixin(RendererMixinSupport):
         master_type = NoteType.ASD if note.note_type == NoteType.ASC else note.note_type
         if not self.visible_note_types.get(master_type.value, True):
             return
+        # Collect all points along the chain
+        chain_points: list[QPointF] = []
         ct, cc, cw = timeline.note_abs_pos(note), note.cell, note.width
         for step in note.steps:
             ys = self.projection.y(ct, current_position)
-            ye = self.projection.y(ct + step.duration / timeline.resolution, current_position)
             xs = self.projection.x(float(cc))
             ws = self.projection.w(float(cw))
-            xe = self.projection.x(float(step.end_cell))
-            we = self.projection.w(float(step.end_width))
-            painter.setPen(
-                QPen(
-                    self._air_base_note_color(step),
-                    self.constants.AIR_PATH_WIDTH,
-                )
-            )
-            painter.drawLine(QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
+            chain_points.append(QPointF(xs + ws / 2, ys))
             ct += step.duration / timeline.resolution
             cc, cw = step.end_cell, step.end_width
+        # Last point
+        ye = self.projection.y(ct, current_position)
+        xe = self.projection.x(float(cc))
+        we = self.projection.w(float(cw))
+        chain_points.append(QPointF(xe + we / 2, ye))
+
+        painter.setPen(
+            QPen(
+                self._air_base_note_color(note.steps[0] if note.steps else note),
+                self.constants.AIR_PATH_WIDTH,
+            )
+        )
+        if len(chain_points) <= 2:
+            for pt in chain_points[1:]:
+                painter.drawLine(chain_points[0], pt)
+        else:
+            self._draw_bezier_path(painter, chain_points)
+
+    def _draw_bezier_line(self, painter: QPainter, p1: QPointF, p2: QPointF) -> None:
+        """Draw a smooth bezier arc between two points with natural tangents."""
+        dx = (p2.x() - p1.x()) * 0.25
+        path = QPainterPath()
+        path.moveTo(p1)
+        path.cubicTo(
+            QPointF(p1.x() + dx, p1.y()),
+            QPointF(p2.x() - dx, p2.y()), p2)
+        painter.strokePath(path, painter.pen())
+
+    def _draw_bezier_path(self, painter: QPainter, points: list[QPointF]) -> None:
+        """Draw a smooth Catmull-Rom spline through control points."""
+        n = len(points)
+        if n <= 2:
+            return
+        path = QPainterPath()
+        path.moveTo(points[0])
+        for i in range(n - 1):
+            p0 = points[max(0, i - 1)]
+            p1 = points[i]
+            p2 = points[i + 1]
+            p3 = points[min(n - 1, i + 2)]
+            cp1 = QPointF(p1.x() + (p2.x() - p0.x()) / 6.0,
+                          p1.y() + (p2.y() - p0.y()) / 6.0)
+            cp2 = QPointF(p2.x() - (p3.x() - p1.x()) / 6.0,
+                          p2.y() - (p3.y() - p1.y()) / 6.0)
+            path.cubicTo(cp1, cp2, p2)
+        painter.strokePath(path, painter.pen())
 
     def _draw_crash_slide_background(
         self,
@@ -308,7 +351,9 @@ class AirRendererMixin(RendererMixinSupport):
                 self.constants.AIR_PATH_WIDTH,
             )
         )
-        painter.drawLine(QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
+        self._draw_bezier_line(painter,
+            QPointF(xs + ws / 2, ys),
+            QPointF(xe + we / 2, ye))
 
     def _draw_air_solid_background(
         self,

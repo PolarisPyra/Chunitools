@@ -427,8 +427,8 @@ class BaseRenderer(
         painter.drawPixmap(rect.topLeft().toPoint(), pixmap)
 
     def _build_slide_body_path(self, points: list[SlidePathPoint]) -> QPainterPath:
-        left_path = self._build_polyline_path([point.left for point in points])
-        right_path = self._build_polyline_path([point.right for point in reversed(points)])
+        left_path = self._build_bezier_path([point.left for point in points])
+        right_path = self._build_bezier_path([point.right for point in reversed(points)])
         path = QPainterPath(left_path)
         if points:
             path.lineTo(points[-1].right)
@@ -436,7 +436,38 @@ class BaseRenderer(
         path.closeSubpath()
         return path
 
+    def _build_bezier_path(self, points: list[QPointF], tension: float = 0.5) -> QPainterPath:
+        """Build a smooth Catmull-Rom spline path through control points.
+
+        Converts Catmull-Rom control points to cubic B\u00e9zier curve segments
+        matching the game's ``SpkInterpolationBezierAD3`` rendering.
+        """
+        path = QPainterPath()
+        n = len(points)
+        if n == 0:
+            return path
+        path.moveTo(points[0])
+        if n <= 2:
+            for pt in points[1:]:
+                path.lineTo(pt)
+            return path
+
+        for i in range(n - 1):
+            p0 = points[max(0, i - 1)]
+            p1 = points[i]
+            p2 = points[i + 1]
+            p3 = points[min(n - 1, i + 2)]
+            # Catmull-Rom → cubic Bézier control points with tension τ = 0.5
+            cp1 = QPointF(p1.x() + (p2.x() - p0.x()) / 6.0,
+                          p1.y() + (p2.y() - p0.y()) / 6.0)
+            cp2 = QPointF(p2.x() - (p3.x() - p1.x()) / 6.0,
+                          p2.y() - (p3.y() - p1.y()) / 6.0)
+            path.cubicTo(cp1, cp2, p2)
+
+        return path
+
     def _build_polyline_path(self, points: list[QPointF]) -> QPainterPath:
+        """Legacy polyline builder — kept for reference but no longer used for slides."""
         path = QPainterPath()
         if not points:
             return path

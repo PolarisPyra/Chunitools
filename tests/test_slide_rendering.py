@@ -112,7 +112,8 @@ def test_slide_control_points_follow_line_control_role_without_tap() -> None:
     assert drawn == [NoteType.SLD]
 
 
-def test_multi_segment_c2s_slide_background_uses_straight_segments() -> None:
+def test_multi_segment_c2s_slide_background_uses_bezier_curves() -> None:
+    """Slide body paths should use cubic B\u00e9zier curves matching the game's SpkInterpolationBezierAD3."""
     chart = parse_c2s(
         "\n".join(
             [
@@ -126,11 +127,9 @@ def test_multi_segment_c2s_slide_background_uses_straight_segments() -> None:
     renderer = BaseRenderer(ViewProjection(timeline_engine=chart.timeline))
 
     points = renderer._slide_path_points(slide, 0.0, chart.timeline)
-    center_path = renderer._build_polyline_path([point.center for point in points])
     body_path = renderer._build_slide_body_path(points)
 
-    assert not _path_has_cubic_curve(center_path)
-    assert not _path_has_cubic_curve(body_path)
+    assert _path_has_cubic_curve(body_path), "Slide body should use B\u00e9zier curves"
 
 
 def _path_has_cubic_curve(path: QPainterPath) -> bool:
