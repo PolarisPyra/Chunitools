@@ -293,7 +293,10 @@ class BaseRenderer(
         }
         for note in notes:
             nt_val = note.note_type.value
-            if not self.visible_note_types.get(nt_val, True) and note.note_type not in composite_head_types:
+            if (
+                not self.visible_note_types.get(nt_val, True)
+                and note.note_type not in composite_head_types
+            ):
                 continue
 
             note_id = id(note)
@@ -458,10 +461,8 @@ class BaseRenderer(
             p2 = points[i + 1]
             p3 = points[min(n - 1, i + 2)]
             # Catmull-Rom → cubic Bézier control points with tension τ = 0.5
-            cp1 = QPointF(p1.x() + (p2.x() - p0.x()) / 6.0,
-                          p1.y() + (p2.y() - p0.y()) / 6.0)
-            cp2 = QPointF(p2.x() - (p3.x() - p1.x()) / 6.0,
-                          p2.y() - (p3.y() - p1.y()) / 6.0)
+            cp1 = QPointF(p1.x() + (p2.x() - p0.x()) / 6.0, p1.y() + (p2.y() - p0.y()) / 6.0)
+            cp2 = QPointF(p2.x() - (p3.x() - p1.x()) / 6.0, p2.y() - (p3.y() - p1.y()) / 6.0)
             path.cubicTo(cp1, cp2, p2)
 
         return path

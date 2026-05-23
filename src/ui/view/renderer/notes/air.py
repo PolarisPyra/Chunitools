@@ -261,9 +261,7 @@ class AirRendererMixin(RendererMixinSupport):
                 self.constants.AIR_PATH_WIDTH,
             )
         )
-        self._draw_bezier_line(painter,
-            QPointF(xs + ws / 2, ys),
-            QPointF(xe + we / 2, ye))
+        self._draw_bezier_line(painter, QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
 
     def _draw_air_slide_chain(
         self,
@@ -308,9 +306,7 @@ class AirRendererMixin(RendererMixinSupport):
         dx = (p2.x() - p1.x()) * 0.25
         path = QPainterPath()
         path.moveTo(p1)
-        path.cubicTo(
-            QPointF(p1.x() + dx, p1.y()),
-            QPointF(p2.x() - dx, p2.y()), p2)
+        path.cubicTo(QPointF(p1.x() + dx, p1.y()), QPointF(p2.x() - dx, p2.y()), p2)
         painter.strokePath(path, painter.pen())
 
     def _draw_bezier_path(self, painter: QPainter, points: list[QPointF]) -> None:
@@ -325,10 +321,8 @@ class AirRendererMixin(RendererMixinSupport):
             p1 = points[i]
             p2 = points[i + 1]
             p3 = points[min(n - 1, i + 2)]
-            cp1 = QPointF(p1.x() + (p2.x() - p0.x()) / 6.0,
-                          p1.y() + (p2.y() - p0.y()) / 6.0)
-            cp2 = QPointF(p2.x() - (p3.x() - p1.x()) / 6.0,
-                          p2.y() - (p3.y() - p1.y()) / 6.0)
+            cp1 = QPointF(p1.x() + (p2.x() - p0.x()) / 6.0, p1.y() + (p2.y() - p0.y()) / 6.0)
+            cp2 = QPointF(p2.x() - (p3.x() - p1.x()) / 6.0, p2.y() - (p3.y() - p1.y()) / 6.0)
             path.cubicTo(cp1, cp2, p2)
         painter.strokePath(path, painter.pen())
 
@@ -351,9 +345,7 @@ class AirRendererMixin(RendererMixinSupport):
                 self.constants.AIR_PATH_WIDTH,
             )
         )
-        self._draw_bezier_line(painter,
-            QPointF(xs + ws / 2, ys),
-            QPointF(xe + we / 2, ye))
+        self._draw_bezier_line(painter, QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
 
     def _draw_air_solid_background(
         self,

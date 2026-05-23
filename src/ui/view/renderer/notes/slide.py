@@ -230,6 +230,7 @@ class SlideRendererMixin(RendererMixinSupport):
 
         color = self._slide_endpoint_color(step)
         pixmap_key = self._tap_pixmap_key(color, w, "tap")
+
         def draw_cached_step(p: QPainter, r: QRectF) -> None:
             self._draw_rounded_rect(p, r, color)
             self._draw_tap_symbol(p, r)
