@@ -10,6 +10,7 @@ from src.notes.air import Air, AirHold, AirHoldStart, AirSlide, AirSlideStart, C
 from src.notes.effects import AirSolid, HeavenHold
 from src.notes.flick import Flick
 from src.notes.hold import Hold
+from src.notes.schema import NOTE_SCHEMAS, parse_schema_fields
 from src.notes.slide import Slide, SlideTo
 from src.notes.tap import ExTap, Mine, Tap
 
@@ -99,119 +100,122 @@ def _parse_mine(note_type: NoteType, head: NoteHead) -> Note:
 
 
 def _parse_extap(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
-    return ExTap(**_base_kwargs(note_type, head), unknown=data[0])
+    fields = parse_schema_fields(note_type, head["data"])
+    return ExTap(**_base_kwargs(note_type, head), animation=fields["animation"])
 
 
 def _parse_flick(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
-    return Flick(**_base_kwargs(note_type, head), unknown=data[0])
+    fields = parse_schema_fields(note_type, head["data"])
+    return Flick(**_base_kwargs(note_type, head), direction=fields["direction"])
 
 
 def _parse_hold(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return Hold(
         **_base_kwargs(note_type, head),
-        duration=int_from_float(data[0]),
-        animation=data[1] if len(data) > 1 else None,
+        duration=fields["duration"],
+        animation=fields.get("animation"),
     )
 
 
 def _parse_slide(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return SlideTo(
         **_base_kwargs(note_type, head),
-        duration=int_from_float(data[0]),
-        end_cell=int_from_float(data[1]),
-        end_width=int_from_float(data[2]),
-        target_id=data[3] if len(data) > 3 else None,
-        animation=data[4] if len(data) > 4 else None,
+        duration=fields["duration"],
+        end_cell=fields["end_cell"],
+        end_width=fields["end_width"],
+        target_id=fields.get("target_id"),
+        animation=fields.get("animation"),
         is_visible=note_type.value.endswith("D"),
     )
 
 
 def _parse_air(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return Air(
         **_base_kwargs(note_type, head),
-        target_note=data[0],
-        color=data[1] if len(data) > 1 else "DEF",
+        target_note=fields["target_note"],
+        color=fields.get("color", "DEF"),
+        color_is_explicit="color" in fields,
     )
 
 
 def _parse_air_hold_start(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return AirHoldStart(
         **_base_kwargs(note_type, head),
-        target_note=data[0],
-        duration=int_from_float(data[1]),
+        target_note=fields["target_note"],
+        duration=fields["duration"],
+        color=fields.get("color", "DEF"),
+        color_is_explicit="color" in fields,
     )
 
 
 def _parse_air_hold(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return AirHold(
         **_base_kwargs(note_type, head),
-        target_note=data[0],
-        duration=int_from_float(data[1]),
-        color=data[2] if len(data) > 2 else "DEF",
+        target_note=fields["target_note"],
+        duration=fields["duration"],
+        color=fields.get("color", "DEF"),
     )
 
 
 def _parse_crash_slide(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return CrashSlide(
         **_base_kwargs(note_type, head),
-        crush_interval=int_from_float(data[0]),
-        starting_height=float(data[1]),
-        duration=int_from_float(data[2]),
-        end_cell=int_from_float(data[3]),
-        end_width=int_from_float(data[4]),
-        target_height=float(data[5]),
-        color=data[6],
+        crush_interval=fields["crush_interval"],
+        starting_height=fields["starting_height"],
+        duration=fields["duration"],
+        end_cell=fields["end_cell"],
+        end_width=fields["end_width"],
+        target_height=fields["target_height"],
+        color=fields["color"],
     )
 
 
 def _parse_air_slide(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return AirSlide(
         **_base_kwargs(note_type, head),
-        target_note=data[0],
-        starting_height=float(data[1]),
-        duration=int_from_float(data[2]),
-        end_cell=int_from_float(data[3]),
-        end_width=int_from_float(data[4]),
-        target_height=float(data[5]),
-        color=data[6],
+        target_note=fields["target_note"],
+        starting_height=fields["starting_height"],
+        duration=fields["duration"],
+        end_cell=fields["end_cell"],
+        end_width=fields["end_width"],
+        target_height=fields["target_height"],
+        color=fields["color"],
     )
 
 
 def _parse_air_solid(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return AirSolid(
         **_base_kwargs(note_type, head),
-        starting_height=float(data[0]),
-        starting_depth=float(data[1]),
-        duration=int_from_float(data[2]),
-        end_cell=int_from_float(data[3]),
-        end_width=int_from_float(data[4]),
-        target_height=float(data[5]),
-        target_depth=float(data[6]),
-        color=data[7],
+        starting_height=fields["starting_height"],
+        starting_depth=fields["starting_depth"],
+        duration=fields["duration"],
+        end_cell=fields["end_cell"],
+        end_width=fields["end_width"],
+        target_height=fields["target_height"],
+        target_depth=fields["target_depth"],
+        color=fields["color"],
     )
 
 
 def _parse_heaven_hold(note_type: NoteType, head: NoteHead) -> Note:
-    data = head["data"]
+    fields = parse_schema_fields(note_type, head["data"])
     return HeavenHold(
         **_base_kwargs(note_type, head),
-        starting_height=float(data[0]),
-        duration=int_from_float(data[1]),
-        end_cell=int_from_float(data[2]),
-        end_width=int_from_float(data[3]),
-        target_height=float(data[4]),
-        heaven_id=int_from_float(data[5]),
-        animation=data[6] if len(data) > 6 else None,
+        starting_height=fields["starting_height"],
+        duration=fields["duration"],
+        end_cell=fields["end_cell"],
+        end_width=fields["end_width"],
+        target_height=fields["target_height"],
+        heaven_id=fields["heaven_id"],
+        animation=fields.get("animation"),
     )
 
 
@@ -227,11 +231,11 @@ def _build_tap(base: dict[str, Any], _duration: int, _extras: dict[str, Any]) ->
 
 
 def _build_extap(base: dict[str, Any], _duration: int, _extras: dict[str, Any]) -> Note:
-    return ExTap(**base, unknown="0")
+    return ExTap(**base, animation="0")
 
 
 def _build_flick(base: dict[str, Any], _duration: int, _extras: dict[str, Any]) -> Note:
-    return Flick(**base, unknown="L")
+    return Flick(**base, direction="L")
 
 
 def _build_mine(base: dict[str, Any], _duration: int, _extras: dict[str, Any]) -> Note:
@@ -382,6 +386,8 @@ AIR_MODIFIER_NOTE_TYPES: frozenset[NoteType] = frozenset(
 AIR_SUSTAIN_NOTE_TYPES: frozenset[NoteType] = frozenset(
     note_type for note_type, spec in _NOTE_FACTORIES.items() if spec.parser_group == "air_sustain"
 )
+
+SCHEMA_NOTE_TYPES: frozenset[NoteType] = frozenset(NOTE_SCHEMAS)
 
 
 def parse_note(note_type: NoteType, args: list[str]) -> Note | None:

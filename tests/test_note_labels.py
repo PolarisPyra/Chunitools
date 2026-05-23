@@ -32,7 +32,7 @@ def test_ahx_is_labeled_as_air_hold_action() -> None:
     )
 
     assert "AIR HOLD ACTION" in format_render_behavior(note)
-    assert _get_header_parts(NoteType.AHX) == ["MS", "OFF", "CEL", "WID", "TRG", "DUR", "CLR"]
+    assert _get_header_parts(NoteType.AHX) == ["MS", "OFF", "CEL", "WID", "TRG", "DUR", "[CLR]"]
 
 
 def test_ald_non_is_labeled_as_air_action() -> None:
@@ -99,10 +99,10 @@ def test_headers_match_extra_fields() -> None:
         offset=0,
         cell=4,
         width=4,
-        unknown="L",
+        direction="L",
     )
 
-    assert _get_header_parts(NoteType.FLK) == ["MS", "OFF", "CEL", "WID", "UNK"]
+    assert _get_header_parts(NoteType.FLK) == ["MS", "OFF", "CEL", "WID", "DIR"]
     assert len(_get_header_parts(NoteType.FLK)) == 4 + len(note.get_extra_parts())
-    assert _get_header_parts(NoteType.AIR) == ["MS", "OFF", "CEL", "WID", "TRG"]
-    assert _get_header_parts(NoteType.AHD) == ["MS", "OFF", "CEL", "WID", "TRG", "DUR"]
+    assert _get_header_parts(NoteType.AIR) == ["MS", "OFF", "CEL", "WID", "TRG", "[CLR]"]
+    assert _get_header_parts(NoteType.AHD) == ["MS", "OFF", "CEL", "WID", "TRG", "DUR", "[CLR]"]

@@ -256,9 +256,9 @@ class NoteDebugOverlay(QWidget):
         if note_animation:
             lines.append(f"Animation: {note_animation}")
 
-        note_unknown = getattr(note, "unknown", None)
-        if note_unknown:
-            lines.append(f"Unknown: {note_unknown}")
+        note_direction = getattr(note, "direction", None)
+        if note_direction:
+            lines.append(f"Direction: {note_direction}")
 
         note_color = getattr(note, "color", None)
         if note_color:

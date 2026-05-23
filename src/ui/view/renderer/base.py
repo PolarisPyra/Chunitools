@@ -545,9 +545,7 @@ class BaseRenderer(
 
     def _ex_tap_symbol_type(self, note: Any) -> str | None:
         ex_type: str | None = None
-        if note.note_type == NoteType.CHR:
-            ex_type = getattr(note, "unknown", None)
-        elif note.note_type == NoteType.HXD:
+        if note.note_type in (NoteType.CHR, NoteType.HXD):
             ex_type = getattr(note, "animation", None)
         elif note.note_type in (NoteType.SXD, NoteType.SXC):
             ex_type = getattr(note, "animation", None)

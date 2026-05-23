@@ -25,12 +25,14 @@ from src.notes.factory import (
     AIR_SLIDE_NOTE_TYPES,
     AIR_SUSTAIN_NOTE_TYPES,
     EDITOR_NOTE_TYPES,
+    NOTE_FACTORIES,
     PARSER_NOTE_TYPES,
     SLIDE_NOTE_TYPES,
     build_editor_note,
     clamp_note_geometry,
     parse_note,
 )
+from src.notes.schema import NOTE_SCHEMAS, PLAYABLE_NOTE_TYPES
 
 
 @pytest.mark.parametrize(
@@ -51,6 +53,7 @@ from src.notes.factory import (
         ("ADR\t1\t2\t3\t4\tTAP", Air, "ADR\t1\t2\t3\t4\tTAP"),
         ("ADL\t1\t2\t3\t4\tTAP", Air, "ADL\t1\t2\t3\t4\tTAP"),
         ("AHD\t1\t2\t3\t4\tTAP\t192", AirHoldStart, "AHD\t1\t2\t3\t4\tTAP\t192"),
+        ("AHD\t1\t2\t3\t4\tTAP\t192\tGRN", AirHoldStart, "AHD\t1\t2\t3\t4\tTAP\t192\tGRN"),
         ("AHX\t1\t2\t3\t4\tAHD\t192\tGRN", AirHold, "AHX\t1\t2\t3\t4\tAHD\t192\tGRN"),
         (
             "ALD\t1\t2\t3\t4\t0\t1.0\t192\t5\t6\t2.0\tNON",
@@ -120,6 +123,39 @@ def test_parser_note_type_groups_match_current_c2s_parser_needs() -> None:
     assert {NoteType.AHD, NoteType.ALD, NoteType.AHX} == AIR_SUSTAIN_NOTE_TYPES
     assert NoteType.ASX in PARSER_NOTE_TYPES
     assert NoteType.ASX not in EDITOR_NOTE_TYPES
+
+
+def test_playable_note_types_have_schema_and_factory_entries() -> None:
+    assert set(NOTE_SCHEMAS) == PLAYABLE_NOTE_TYPES
+    assert set(NOTE_FACTORIES) == PLAYABLE_NOTE_TYPES
+    assert all(NOTE_SCHEMAS[note_type].evidence for note_type in PLAYABLE_NOTE_TYPES)
+
+
+def test_renamed_fields_keep_compatibility_aliases() -> None:
+    extap = ExTap(note_type=NoteType.CHR, measure=1, offset=2, cell=3, width=4, animation="UP")
+    old_extap = ExTap(note_type=NoteType.CHR, measure=1, offset=2, cell=3, width=4, unknown="DW")
+    flick = Flick(note_type=NoteType.FLK, measure=1, offset=2, cell=3, width=4, direction="L")
+    old_flick = Flick(note_type=NoteType.FLK, measure=1, offset=2, cell=3, width=4, unknown="R")
+    air_slide = AirSlide(
+        note_type=NoteType.ASD,
+        measure=1,
+        offset=2,
+        cell=3,
+        width=4,
+        target_note="TAP",
+        starting_height=1.0,
+        duration=192,
+        end_cell=5,
+        end_width=6,
+        target_height=2.0,
+        color="DEF",
+    )
+
+    assert extap.unknown == "UP"
+    assert old_extap.animation == "DW"
+    assert flick.unknown == "L"
+    assert old_flick.direction == "R"
+    assert air_slide.wrapped_type == "TAP"
 
 
 @pytest.mark.parametrize(

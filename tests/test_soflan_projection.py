@@ -26,7 +26,7 @@ def _music2978_slowflan_fixture() -> tuple[Chart, Hold, ExTap]:
         offset=0,
         cell=0,
         width=16,
-        unknown="BS",
+        animation="BS",
     )
     chart = Chart(
         metadata=ChartMetadata(resolution=384, bpm_def=["120.0"]),

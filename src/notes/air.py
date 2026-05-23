@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.notes.base import Note
 
@@ -11,9 +11,10 @@ class Air(Note):
 
     target_note: str
     color: str = "DEF"
+    color_is_explicit: bool = field(default=False, repr=False)
 
     def get_extra_parts(self) -> list[str]:
-        if self.color == "DEF":
+        if self.color == "DEF" and not self.color_is_explicit:
             return [self.target_note]
         return [self.target_note, self.color]
 
@@ -24,9 +25,14 @@ class AirHoldStart(Note):
 
     target_note: str
     duration: int
+    color: str = "DEF"
+    color_is_explicit: bool = field(default=False, repr=False)
 
     def get_extra_parts(self) -> list[str]:
-        return [self.target_note, str(self.duration)]
+        parts = [self.target_note, str(self.duration)]
+        if self.color != "DEF" or self.color_is_explicit:
+            parts.append(self.color)
+        return parts
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -77,6 +83,11 @@ class AirSlide(Note):
     end_width: int
     target_height: float
     color: str
+
+    @property
+    def wrapped_type(self) -> str:
+        """Compatibility-forward alias for the wrapped note type field."""
+        return self.target_note
 
     def get_extra_parts(self) -> list[str]:
         return [

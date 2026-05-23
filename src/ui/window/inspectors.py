@@ -5,6 +5,7 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from src.core.const import NoteType, RenderRole
+from src.notes.schema import NOTE_SCHEMAS
 
 if TYPE_CHECKING:
     from src.core.models import Chart
@@ -245,6 +246,31 @@ def _render_table_separator(col_widths: list[int]) -> str:
 def _get_header_parts(ntype: NoteType) -> list[str]:  # noqa: PLR0911
     """Return descriptive header parts for the given note type."""
     base = ["MS", "OFF", "CEL", "WID"]
+
+    labels = {
+        "animation": "ANI",
+        "color": "CLR",
+        "crush_interval": "TICK",
+        "direction": "DIR",
+        "duration": "DUR",
+        "end_cell": "ECL",
+        "end_width": "EWD",
+        "heaven_id": "HID",
+        "starting_depth": "DEP",
+        "starting_height": "HGT",
+        "target_depth": "EDEP",
+        "target_height": "EHGT",
+        "target_id": "TYPE",
+        "target_note": "TRG",
+    }
+    schema = NOTE_SCHEMAS.get(ntype)
+    if schema is not None:
+        return base + [
+            f"[{labels.get(field.name, field.name.upper())}]"
+            if not field.required
+            else labels.get(field.name, field.name.upper())
+            for field in schema.fields
+        ]
 
     if ntype in (NoteType.TAP, NoteType.MNE):
         return base
