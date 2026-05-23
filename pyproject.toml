@@ -55,7 +55,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["PLR0913", "PLR0914", "PLR0915", "TCH"]
-"scripts/*" = ["TCH"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
