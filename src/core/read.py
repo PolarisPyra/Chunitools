@@ -37,19 +37,17 @@ from src.core.models import (
     Stop,
 )
 from src.notes import (
-    AirSlide,
-    AirSlideStart,
-    Note,
-    Slide,
-    SlideTo,
-)
-from src.notes.factory import (
     AIR_ARROW_NOTE_TYPES,
     AIR_HOLD_NOTE_TYPES,
     AIR_SLIDE_NOTE_TYPES,
     AIR_TRACE_NOTE_TYPES,
     PARSER_NOTE_TYPE_VALUES,
     SLIDE_NOTE_TYPES,
+    AirSlide,
+    AirSlideStart,
+    Note,
+    Slide,
+    SlideTo,
     parse_note,
 )
 from src.notes.geometry import (

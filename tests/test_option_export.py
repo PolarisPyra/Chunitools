@@ -7,11 +7,11 @@ import pytest
 from PIL import Image
 from PyCriCodecsEx.utf import UTF
 
+from src.audio.codecs import extract_afs2_header, parse_afs2
 from src.core.audio_assets import resolve_chart_awb_path
 from src.core.option_export import OptionExportError, export_option_folder, verify_option_folder
 from src.core.read import parse_c2s
 from src.core.write import create_blank_chart, serialize_music_xml
-from src.audio.codecs import extract_afs2_header, parse_afs2
 
 
 def test_option_folder_export_writes_official_style_layout(tmp_path: Path) -> None:
@@ -59,7 +59,7 @@ def test_option_folder_export_rejects_non_awb_audio_without_python_hca_encoder(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    import src.core.option_export as option_export
+    from src.core import option_export
 
     chart = create_blank_chart()
     chart.metadata.music_id = "2822"

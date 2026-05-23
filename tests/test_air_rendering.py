@@ -1,11 +1,12 @@
 
-import pytest
-from src.core.models import Chart, ChartMetadata
 from pathlib import Path
 
-from src.notes.air import CrashSlide, AirHoldStart, AirSlideStart, AirSlide
-from src.engine.timeline import ChartTimeline
+import pytest
+
 from src.core.enums import NoteType
+from src.core.models import Chart, ChartMetadata
+from src.engine.timeline import ChartTimeline
+from src.notes.air import AirHoldStart, AirSlide, AirSlideStart, CrashSlide
 
 CHUNITHM_3003_MASTER = Path(
     "/home/polaris/Documents/Projects/Arcade/resources/chunithm/charts/"
@@ -14,26 +15,26 @@ CHUNITHM_3003_MASTER = Path(
 
 def test_air_note_end_tick():
     chart = Chart(metadata=ChartMetadata(resolution=384))
-    
+
     # ALD with duration 192
     ald = CrashSlide(
         note_type=NoteType.ALD, measure=1, offset=0, cell=0, width=4,
         crush_interval=0, starting_height=1.0, duration=192,
         end_cell=0, end_width=4, target_height=1.0, color="PPL"
     )
-    
+
     # AHD with duration 384
     ahd = AirHoldStart(
         note_type=NoteType.AHD, measure=1, offset=192, cell=0, width=4,
         target_note="TAP", duration=384
     )
-    
+
     chart.notes = [ald, ahd]
     timeline = ChartTimeline(chart)
-    
+
     assert timeline.note_tick(ald) == 384
     assert timeline.note_end_tick(ald) == 384 + 192
-    
+
     assert timeline.note_tick(ahd) == 384 + 192
     assert timeline.note_end_tick(ahd) == 384 + 192 + 384
 
@@ -51,31 +52,32 @@ def test_air_trace_fields():
     assert ald.target_height == 2.0
 
 def test_painter_draw_notes():
-    import sys
-    from PySide6.QtWidgets import QApplication
-    from PySide6.QtGui import QPainter, QImage
-    from PySide6.QtCore import QSize
-    from src.ui.view.chart_renderer import ChartRenderer
-    from src.ui.view.projection import ViewProjection
-    from src.core.metadata import load_chart_file
-    
     # Clear log
     import os
+    import sys
+
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QImage, QPainter
+    from PySide6.QtWidgets import QApplication
+
+    from src.core.metadata import load_chart_file
+    from src.ui.view.chart_renderer import ChartRenderer
+    from src.ui.view.projection import ViewProjection
     if os.path.exists("logs/renderer.log"):
         with open("logs/renderer.log", "w") as f:
             f.truncate(0)
-            
-    app = QApplication.instance() or QApplication(sys.argv)
+
+    QApplication.instance() or QApplication(sys.argv)
     chart = load_chart_file("charts/0006_04.c2s")
     timeline = ChartTimeline(chart)
     proj = ViewProjection(timeline_engine=timeline)
     painter = ChartRenderer(proj)
-    
+
     img = QImage(QSize(800, 600), QImage.Format_ARGB32)
     p = QPainter(img)
     painter.draw_notes(p, chart.notes, 0.0)
     p.end()
-    
+
     # Check if the log was populated
     import os
 
@@ -162,11 +164,11 @@ def test_air_arrow_color_modifiers_follow_inversion_flag():
 
 def test_air_base_color_uses_own_type_not_target_for_air_hold():
     """Per Margrete spec, air holds use their own type color, not target note color."""
-    from src.ui.theme.notes import get_note_color
+    from src.core.enums import NoteType
     from src.notes.air import AirHoldStart
+    from src.ui.theme.notes import get_note_color
     from src.ui.view.chart_renderer import ChartRenderer
     from src.ui.view.projection import ViewProjection
-    from src.core.enums import NoteType
 
     renderer = ChartRenderer(ViewProjection())
     air_hold = AirHoldStart(
@@ -184,11 +186,10 @@ def test_air_base_color_uses_own_type_not_target_for_air_hold():
 
 def test_air_base_color_uses_own_type_not_target_for_air_slide_step():
     """Per Margrete spec, air slides use their own type color, not target note color."""
+    from src.core.enums import NoteType
     from src.ui.theme.notes import get_note_color
-    from src.notes.air import AirSlide
     from src.ui.view.chart_renderer import ChartRenderer
     from src.ui.view.projection import ViewProjection
-    from src.core.enums import NoteType
 
     renderer = ChartRenderer(ViewProjection())
     air_slide = AirSlide(
@@ -392,10 +393,10 @@ ASD	10	0	4	4	ASC	5.0	96	6	4	5.0	DEF
 """
     chart = parse_c2s(content)
     timeline = ChartTimeline(chart)
-    
+
     air_slides = [n for n in chart.notes if isinstance(n, AirSlideStart)]
     step = air_slides[0].steps[0]
-    
+
     assert step.duration == 96
     assert timeline.note_abs_pos(step) == 10.0
     # If this is 10.0, then duration is being read as 0
@@ -486,8 +487,8 @@ def test_air_slide_asc_chains_draw_end_action_bars_for_2960():
 
 
 def test_final_ex_slide_step_is_end_role_for_2960():
-    from src.core.metadata import load_chart_file
     from src.core.enums import NoteType
+    from src.core.metadata import load_chart_file
     from src.notes import Slide
     from src.ui.view.chart_renderer import ChartRenderer
     from src.ui.view.projection import ViewProjection
@@ -694,8 +695,8 @@ def test_ald_air_crush_markers_follow_crush_interval_not_color():
 
 
 def test_ex_slide_start_is_not_chained_to_air_slide_for_2960():
-    from src.core.metadata import load_chart_file
     from src.core.enums import NoteType
+    from src.core.metadata import load_chart_file
     from src.notes import Slide
     from src.ui.view.chart_renderer import ChartRenderer
     from src.ui.view.projection import ViewProjection

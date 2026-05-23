@@ -72,10 +72,10 @@ def test_3d_depth_culling_uses_world_units_not_normalized_fraction() -> None:
     assert window_s == pytest.approx(7.0 / 9.0)
     assert draw_edge_depth == pytest.approx(VISIBLE_DEPTH * 0.84)
     assert passed_depth == pytest.approx(VISIBLE_DEPTH * -0.1)
-    assert DRAW_DEPTH_MAX == pytest.approx(VISIBLE_DEPTH * 0.84)
+    assert pytest.approx(VISIBLE_DEPTH * 0.84) == DRAW_DEPTH_MAX
     assert draw_edge_depth <= DRAW_DEPTH_MAX
     assert beyond_draw_depth > DRAW_DEPTH_MAX
-    assert ACTIVE_DEPTH_MAX == pytest.approx(VISIBLE_DEPTH * 0.84)
+    assert pytest.approx(VISIBLE_DEPTH * 0.84) == ACTIVE_DEPTH_MAX
 
 
 def test_note_screen_span_keeps_chart_cell_center_with_game_lane_units() -> None:
@@ -83,7 +83,7 @@ def test_note_screen_span_keeps_chart_cell_center_with_game_lane_units() -> None
     x, width = _note_screen_span(cell=0.0, width=1.0, vanish_x=vanish_x, scale=1.0)
 
     full_lane_width = LANE_UNITS * PIXELS_PER_UNIT
-    assert NOTE_WIDTH_FRAC == pytest.approx(1.0)
+    assert pytest.approx(1.0) == NOTE_WIDTH_FRAC
     assert width == pytest.approx(full_lane_width * NOTE_WIDTH_FRAC)
     assert x + width / 2.0 == pytest.approx(full_lane_width / 2.0)
 

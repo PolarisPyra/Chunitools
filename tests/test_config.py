@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import yaml
 
-import src.core.config as config
+from src.core import config
 from src.core.config import (
     DEFAULT_HITSOUND_VOLUME,
     DEFAULT_MUSIC_VOLUME,

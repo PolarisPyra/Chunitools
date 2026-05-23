@@ -8,7 +8,6 @@ from src.notes import Hold, Slide
 from src.ui.view.projection import ViewProjection
 from src.ui.view.renderer.base import BaseRenderer
 
-
 CHUNITHM_3002_MASTER = Path(
     "/home/polaris/Documents/Projects/Arcade/resources/chunithm/charts/"
     "A291/music/music3002/3002_03.c2s"

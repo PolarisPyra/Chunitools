@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from src.core.const import NoteType  # noqa: TC001
 from src.notes import (  # noqa: TC001
+    DEFAULT_NOTE_DURATION as _DEFAULT_NOTE_DURATION,
     Air,
     AirHold,
     AirHoldStart,
@@ -23,9 +24,6 @@ from src.notes import (  # noqa: TC001
     Slide,
     SlideTo,
     Tap,
-)
-from src.notes.factory import (
-    DEFAULT_NOTE_DURATION as _DEFAULT_NOTE_DURATION,
     build_editor_note,
     clamp_note_geometry as _clamp_note_geometry,
 )

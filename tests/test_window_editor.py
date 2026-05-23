@@ -9,7 +9,7 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QKeySequence, QMouseEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QLabel, QPushButton
 
-import src.core.config as config
+from src.core import config
 from src.core.config import settings
 from src.core.const import NoteType
 from src.core.write import serialize_c2s

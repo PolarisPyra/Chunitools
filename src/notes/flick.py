@@ -1,32 +1,27 @@
+"""Flick note (FLK)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-from src.notes.base import Note
-
-if TYPE_CHECKING:
-    from src.core.const import NoteType
+from src.core.const import NoteType  # noqa: TC001
+from src.notes.base import Note, NoteHead
+from src.notes.schema import parse_schema_fields
 
 
 @dataclass(frozen=True, kw_only=True, slots=True, init=False)
 class Flick(Note):
     """Flick note (FLK)."""
 
+    # Game format: "FLK\t%d\t%d\t%d\t%d\t%s\n"
+    #              MS   OFF  CEL  WID  DIR
+
     direction: str
 
-    def __init__(  # noqa: PLR0913
-        self,
-        *,
-        note_type: NoteType,
-        measure: int,
-        offset: int,
-        cell: int,
-        width: int,
-        parent: Note | None = None,
-        direction: str | None = None,
-        unknown: str | None = None,
-    ) -> None:
+    def __init__(self, *, note_type: NoteType, measure: int, offset: int,
+                 cell: int, width: int, parent: Note | None = None,
+                 direction: str | None = None,
+                 unknown: str | None = None) -> None:
         if direction is None:
             if unknown is None:
                 msg = "Flick requires direction"
@@ -40,9 +35,21 @@ class Flick(Note):
         object.__setattr__(self, "parent", parent)
         object.__setattr__(self, "direction", direction)
 
+    @classmethod
+    def parse(cls, note_type: NoteType, head: NoteHead) -> Note:
+        f = parse_schema_fields(note_type, head["data"])
+        return cls(note_type=note_type, measure=head["measure"], offset=head["offset"],
+                   cell=head["cell"], width=head["width"], direction=f["direction"])
+
+    @classmethod
+    def build(cls, note_type: NoteType, *, measure=0, offset=0, cell=0, width=0,
+              parent=None, **ignored) -> Note:
+        return cls(note_type=note_type, measure=measure, offset=offset,
+                   cell=cell, width=width, parent=parent, direction="L")
+
     @property
     def unknown(self) -> str:
-        """Compatibility alias for older FLK callers."""
+        """Compatibility alias for older callers."""
         return self.direction
 
     def get_extra_parts(self) -> list[str]:

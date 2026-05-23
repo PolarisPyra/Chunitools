@@ -4,6 +4,13 @@ import pytest
 
 from src.core.const import NoteType
 from src.notes import (
+    AIR_ARROW_NOTE_TYPES,
+    AIR_HOLD_NOTE_TYPES,
+    AIR_SLIDE_NOTE_TYPES,
+    AIR_TRACE_NOTE_TYPES,
+    EDITOR_NOTE_TYPES,
+    PARSER_NOTE_TYPES,
+    SLIDE_NOTE_TYPES,
     Air,
     AirHold,
     AirHoldStart,
@@ -19,15 +26,6 @@ from src.notes import (
     Slide,
     SlideTo,
     Tap,
-)
-from src.notes.factory import (
-    AIR_ARROW_NOTE_TYPES,
-    AIR_HOLD_NOTE_TYPES,
-    AIR_SLIDE_NOTE_TYPES,
-    AIR_TRACE_NOTE_TYPES,
-    EDITOR_NOTE_TYPES,
-    PARSER_NOTE_TYPES,
-    SLIDE_NOTE_TYPES,
     build_editor_note,
     clamp_note_geometry,
     parse_note,

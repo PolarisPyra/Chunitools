@@ -54,6 +54,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"src/notes/*" = ["PLR0913", "TC001"]
 "tests/*" = ["PLR0913", "PLR0914", "PLR0915", "TCH"]
 
 [tool.ruff.lint.isort]
