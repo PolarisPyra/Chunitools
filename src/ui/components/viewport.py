@@ -3,7 +3,7 @@ from __future__ import annotations
 import bisect
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QElapsedTimer, QPointF, QRect, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QMouseEvent,
     QPainter,
@@ -46,6 +46,7 @@ MIN_SCROLL_SPEED = 1.0
 MAX_SCROLL_SPEED = 20.0
 PIXELS_PER_SCROLL_SPEED = timeline_compat.MEASURE_HEIGHT
 DEFAULT_VIEW_LANE_WIDTH = 24.0
+RIGHT_DRAG_THRESHOLD_PX = 4.0
 
 
 class ChartViewport(QWidget):
@@ -113,6 +114,10 @@ class ChartViewport(QWidget):
         self._selection_drag_origin: QPointF | None = None
         self._selection_drag_current: QPointF | None = None
         self._selection_drag_viewport_pos: QPointF | None = None
+        self._right_press_pos: QPointF | None = None
+        self._right_press_global_pos: QPoint | None = None
+        self._right_press_note: Note | None = None
+        self._right_press_note_was_selected = False
         self._selection_edge_margin = SELECTION_EDGE_MARGIN
         self._selection_edge_velocity = 0.0
         self._selection_edge_fixed_speed = SELECTION_EDGE_SPEED
@@ -407,17 +412,41 @@ class ChartViewport(QWidget):
             return
 
         if event.button() == Qt.MouseButton.RightButton:
+            self._right_press_pos = event.position()
+            self._right_press_global_pos = event.globalPosition().toPoint()
+            self._right_press_note = None
+            self._right_press_note_was_selected = False
             note = self._pick_note(event.position().x(), event.position().y())
             if note is not None:
+                self._right_press_note = note
+                self._right_press_note_was_selected = self._is_note_selected(note)
                 self.selected_note = note
                 self.selected_notes = [note]
-                self.note_selected.emit(note)
-                self.notes_selected.emit([note])
-                self.note_context_requested.emit(note, event.globalPosition().toPoint())
+                if not self._right_press_note_was_selected:
+                    self.note_selected.emit(note)
+                    self.notes_selected.emit([note])
             else:
                 self._start_selection_drag(event.position())
             self.update()
             return
+
+    def _is_note_selected(self, note: Note) -> bool:
+        return self.selected_note is note or any(selected is note for selected in self.selected_notes)
+
+    def _reset_right_press_state(self) -> None:
+        self._right_press_pos = None
+        self._right_press_global_pos = None
+        self._right_press_note = None
+        self._right_press_note_was_selected = False
+
+    def _right_drag_exceeds_threshold(self, position: QPointF) -> bool:
+        if self._right_press_pos is None:
+            return False
+        return (
+            abs(position.x() - self._right_press_pos.x())
+            + abs(position.y() - self._right_press_pos.y())
+            >= RIGHT_DRAG_THRESHOLD_PX
+        )
 
     def _start_selection_drag(self, position: QPointF) -> None:
         self._selection_drag_viewport_pos = position
@@ -450,6 +479,13 @@ class ChartViewport(QWidget):
                 self._placement_drag_current = target
                 self.update()
             return
+        if (
+            self._right_press_pos is not None
+            and event.buttons() & Qt.MouseButton.RightButton
+            and self._selection_drag_origin is None
+            and self._right_drag_exceeds_threshold(event.position())
+        ):
+            self._start_selection_drag(self._right_press_pos)
         if (
             self._selection_drag_origin is not None
             and event.buttons() & Qt.MouseButton.RightButton
@@ -501,9 +537,16 @@ class ChartViewport(QWidget):
                 self.setCursor(Qt.CursorShape.ArrowCursor)
                 return
         if event.button() == Qt.MouseButton.RightButton and self._selection_drag_origin is not None:
-                self._apply_selection_rect()
-                self._reset_selection_drag_state()
-                self.update()
+            self._apply_selection_rect()
+            self._reset_selection_drag_state()
+            self._reset_right_press_state()
+            self.update()
+            return
+        if event.button() == Qt.MouseButton.RightButton:
+            if self._right_press_note is not None and self._right_press_note_was_selected:
+                menu_pos = self._right_press_global_pos or event.globalPosition().toPoint()
+                self.note_context_requested.emit(self._right_press_note, menu_pos)
+            self._reset_right_press_state()
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         delta = event.angleDelta().y()

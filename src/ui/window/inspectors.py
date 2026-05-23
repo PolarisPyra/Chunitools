@@ -52,9 +52,10 @@ def _note_tag(note_type: NoteType) -> str:
     return f'<span style="color:{color};font-weight:bold;">{escape(note_type.value)}</span>'
 
 
-def _detail_line(label: str, value: str) -> str:
+def _detail_line(label: str, value: str, *, rich_value: bool = False) -> str:
+    rendered_value = value if rich_value else escape(value)
     return f'<span style="color:#ffffff;">{escape(label)}</span> ' \
-           f'<span style="color:#cccccc;">{escape(value)}</span><br>'
+           f'<span style="color:#cccccc;">{rendered_value}</span><br>'
 
 
 def format_render_behavior(note: Note, chart: Chart | None = None) -> str:  # noqa: PLR0912
@@ -105,7 +106,7 @@ def format_render_behavior(note: Note, chart: Chart | None = None) -> str:  # no
     duration = getattr(note, "duration", 0) if hasattr(note, "duration") else 0
 
     html = '<div style="font-family:monospace;font-size:12px;line-height:1.7;">'
-    html += _detail_line("TYPE", _note_tag(note_type))
+    html += _detail_line("TYPE", _note_tag(note_type), rich_value=True)
     html += _detail_line("POS", f"{note.measure}:{note.offset}  (abs={abs_pos:.3f})")
     html += _detail_line("LANE", f"{note.cell}  (width={note.width})")
     html += _detail_line("BEH", behavior)
@@ -117,8 +118,11 @@ def format_render_behavior(note: Note, chart: Chart | None = None) -> str:  # no
         html += _detail_line("DUR", f"{duration} ticks")
 
     if anchor:
-        html += _detail_line("ANC",
-            f'{_note_tag(anchor.note_type)}  at {anchor.measure}:{anchor.offset}')
+        html += _detail_line(
+            "ANC",
+            f'{_note_tag(anchor.note_type)}  at {anchor.measure}:{anchor.offset}',
+            rich_value=True,
+        )
 
     html += "</div>"
     return html
@@ -192,7 +196,7 @@ def _format_grouped(notes: list[Note], chart: Chart) -> str:
             parts = raw.split()
             row_html = "&nbsp;".join(
                 f'{"&nbsp;" * (w - len(p))}{escape(p)}'
-                for p, w in zip(parts[1:], col_widths)
+                for p, w in zip(parts[1:], col_widths, strict=False)
             )
             html += row_html + "<br>"
         html += "<br>"
@@ -212,7 +216,7 @@ def _format_chronological(notes: list[Note], chart: Chart) -> str:
         raw = chart.find_note_line(note)
         parts = raw.split()
         cells = [escape(parts[0])]
-        for p, w in zip(parts[1:base_count], col_widths[1:]):
+        for p, w in zip(parts[1:base_count], col_widths[1:], strict=False):
             cells.append(f'{"&nbsp;" * (w - len(p))}{escape(p)}')
         if len(parts) > base_count:
             extra = " ".join(parts[base_count:])
@@ -226,7 +230,8 @@ def _format_chronological(notes: list[Note], chart: Chart) -> str:
 def _render_table_header(header_parts: list[str], col_widths: list[int]) -> str:
     html = '<span style="color:#aaa;">'
     parts_html = "&nbsp;".join(
-        f'{"&nbsp;" * (w - len(h))}{escape(h)}' for h, w in zip(header_parts, col_widths)
+        f'{"&nbsp;" * (w - len(h))}{escape(h)}'
+        for h, w in zip(header_parts, col_widths, strict=False)
     )
     html += parts_html + "</span><br>"
     return html

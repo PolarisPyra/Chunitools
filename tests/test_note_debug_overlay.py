@@ -11,7 +11,11 @@ from src.core.const import NoteType
 from src.core.models import Chart, ChartMetadata
 from src.core.read import parse_c2s
 from src.notes.air import Air, AirHoldStart, AirSlide, AirSlideStart
-from src.ui.components.note_debug_overlay import NoteDebugOverlay
+from src.ui.components.note_debug_overlay import (
+    AIR_ARROW_DEBUG_LABEL_OFFSET,
+    DEFAULT_DEBUG_LABEL_OFFSET,
+    NoteDebugOverlay,
+)
 
 
 def test_air_sustain_debug_label_anchors_to_action_bar_end() -> None:
@@ -86,6 +90,24 @@ def test_directional_air_debug_label_stays_on_air_note() -> None:
         10.0,
         3.0,
     )
+    assert overlay._label_y_offset(air) == AIR_ARROW_DEBUG_LABEL_OFFSET
+
+
+def test_non_air_arrow_debug_labels_keep_default_offset() -> None:
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    air_hold = AirHoldStart(
+        note_type=NoteType.AHD,
+        measure=0,
+        offset=0,
+        cell=6,
+        width=3,
+        target_note="TAP",
+        duration=96,
+    )
+    overlay = NoteDebugOverlay()
+
+    assert overlay._label_y_offset(air_hold) == DEFAULT_DEBUG_LABEL_OFFSET
 
 
 def test_hxd_up_sequence_does_not_create_air_hold_action() -> None:

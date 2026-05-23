@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
         self.content_splitter.addWidget(viewport_container)
 
         self.inspector_panel = QFrame()
-        self.inspector_panel.setMinimumWidth(400)
+        self.inspector_panel.setMinimumWidth(480)
         self.inspector_panel.setObjectName("InspectorPanel")
         inspector_layout = QVBoxLayout(self.inspector_panel)
         inspector_layout.setContentsMargins(12, 12, 12, 12)
@@ -397,6 +397,7 @@ class MainWindow(QMainWindow):
         header_row.setContentsMargins(0, 0, 0, 0)
         header_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.inspector_label = make_section_label("NOTE INSPECTOR")
+        self.inspector_label.setMinimumWidth(self.inspector_label.sizeHint().width())
         header_row.addWidget(self.inspector_label)
         header_row.addStretch()
         self.group_btn = QPushButton("Grouped")
@@ -459,7 +460,7 @@ class MainWindow(QMainWindow):
         self.content_splitter.setStretchFactor(0, 0)
         self.content_splitter.setStretchFactor(1, 1)
         self.content_splitter.setStretchFactor(2, 0)
-        self.content_splitter.setSizes([360, 1240, 400])
+        self.content_splitter.setSizes([360, 1160, 480])
 
     # ── View ──
 

@@ -1,7 +1,9 @@
 from src.core.enums import NoteType
-from src.notes.air import AirHold, Air, CrashSlide
+from src.core.models import Chart, ChartMetadata
+from src.notes.air import Air, AirHold, AirHoldStart, CrashSlide
 from src.notes.flick import Flick
-from src.ui.window.inspectors import format_render_behavior, _get_header_parts
+from src.notes.slide import Slide, SlideTo
+from src.ui.window.inspectors import _get_header_parts, format_render_behavior
 
 
 def test_air_direction_label_uses_direction_words() -> None:
@@ -14,7 +16,7 @@ def test_air_direction_label_uses_direction_words() -> None:
         target_note="TAP",
     )
 
-    assert "BEH:  AIR UP" in format_render_behavior(note)
+    assert "AIR UP" in format_render_behavior(note)
 
 
 def test_ahx_is_labeled_as_air_hold_action() -> None:
@@ -29,7 +31,7 @@ def test_ahx_is_labeled_as_air_hold_action() -> None:
         color="DEF",
     )
 
-    assert "BEH:  AIR HOLD ACTION" in format_render_behavior(note)
+    assert "AIR HOLD ACTION" in format_render_behavior(note)
     assert _get_header_parts(NoteType.AHX) == ["MS", "OFF", "CEL", "WID", "TRG", "DUR", "CLR"]
 
 
@@ -49,7 +51,45 @@ def test_ald_non_is_labeled_as_air_action() -> None:
         color="NON",
     )
 
-    assert "BEH:  AIR ACTION / AIR CRUSH" in format_render_behavior(note)
+    assert "AIR ACTION / AIR CRUSH" in format_render_behavior(note)
+
+
+def test_note_type_and_anchor_tags_render_as_rich_html() -> None:
+    step = SlideTo(
+        note_type=NoteType.SLD,
+        measure=48,
+        offset=0,
+        cell=0,
+        width=4,
+        duration=192,
+        end_cell=0,
+        end_width=4,
+    )
+    slide = Slide(
+        note_type=NoteType.SLD,
+        measure=48,
+        offset=0,
+        cell=0,
+        width=4,
+        steps=(step,),
+    )
+    note = AirHoldStart(
+        note_type=NoteType.AHD,
+        measure=48,
+        offset=192,
+        cell=0,
+        width=4,
+        parent=slide,
+        target_note="SLD",
+        duration=96,
+    )
+    chart = Chart(metadata=ChartMetadata(resolution=384), notes=[slide, note])
+
+    html = format_render_behavior(note, chart)
+
+    assert '<span style="color:#33ff55;font-weight:bold;">AHD</span>' in html
+    assert '<span style="color:#0090ff;font-weight:bold;">SLD</span>' in html
+    assert "&lt;span" not in html
 
 
 def test_headers_match_extra_fields() -> None:

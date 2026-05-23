@@ -16,7 +16,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from src.core.const import NoteType
+from src.core.const import AIR_ARROW_NOTES, NoteType
 from src.ui import theme
 from src.ui.theme.notes import get_note_color
 
@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 AIR_ACTION_DEBUG_ANCHOR_TYPES = frozenset(
     {NoteType.ASD, NoteType.ASC, NoteType.AHD}
 )
+AIR_ARROW_DEBUG_LABEL_OFFSET = 44.0
+DEFAULT_DEBUG_LABEL_OFFSET = 18.0
 
 
 class NoteDebugOverlay(QWidget):
@@ -138,7 +140,7 @@ class NoteDebugOverlay(QWidget):
             text_height = metrics.height()
 
             label_x = note_x + (note_w - text_width) / 2
-            label_y = note_y - 18
+            label_y = note_y - self._label_y_offset(note)
 
             is_hovered = note is self._hovered_note
             alpha = 220 if is_hovered else 160
@@ -280,6 +282,11 @@ class NoteDebugOverlay(QWidget):
             float(note.cell),
             float(note.width),
         )
+
+    def _label_y_offset(self, note: Note) -> float:
+        if note.note_type in AIR_ARROW_NOTES:
+            return AIR_ARROW_DEBUG_LABEL_OFFSET
+        return DEFAULT_DEBUG_LABEL_OFFSET
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if not self._active:

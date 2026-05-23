@@ -302,7 +302,7 @@ def test_left_click_places_and_right_click_starts_selection(monkeypatch, tmp_pat
         settings.show_inspector = old_show_inspector
 
 
-def test_right_click_note_requests_context_menu() -> None:
+def test_right_click_note_selects_first_then_requests_context_menu() -> None:
     _app()
     viewport = ChartViewport()
     note = CrashSlide(
@@ -320,7 +320,62 @@ def test_right_click_note_requests_context_menu() -> None:
         color="DEF",
     )
     emitted: list[object] = []
+    selected: list[object] = []
     viewport._pick_note = lambda _x, _y: note
+    viewport.note_selected.connect(selected.append)
+    viewport.note_context_requested.connect(lambda selected, _pos: emitted.append(selected))
+
+    right_press = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(10, 10),
+        Qt.MouseButton.RightButton,
+        Qt.MouseButton.RightButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    right_release = QMouseEvent(
+        QEvent.Type.MouseButtonRelease,
+        QPointF(10, 10),
+        Qt.MouseButton.RightButton,
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+    viewport.mousePressEvent(right_press)
+    viewport.mouseReleaseEvent(right_release)
+    assert viewport.selected_note is note
+    assert selected == [note]
+    assert emitted == []
+
+    viewport.mousePressEvent(right_press)
+    assert emitted == []
+    viewport.mouseReleaseEvent(right_release)
+    assert viewport.selected_note is note
+    assert emitted == [note]
+
+
+def test_right_drag_on_selected_note_batch_selects_without_context_menu() -> None:
+    _app()
+    viewport = ChartViewport()
+    note = CrashSlide(
+        note_type=NoteType.ALD,
+        measure=0,
+        offset=0,
+        cell=4,
+        width=2,
+        crush_interval=0,
+        starting_height=1.0,
+        duration=96,
+        end_cell=4,
+        end_width=2,
+        target_height=1.0,
+        color="DEF",
+    )
+    emitted: list[object] = []
+    applied: list[bool] = []
+    viewport._pick_note = lambda _x, _y: note
+    viewport._apply_selection_rect = lambda: applied.append(True)
+    viewport.selected_note = note
+    viewport.selected_notes = [note]
     viewport.note_context_requested.connect(lambda selected, _pos: emitted.append(selected))
 
     viewport.mousePressEvent(
@@ -332,9 +387,27 @@ def test_right_click_note_requests_context_menu() -> None:
             Qt.KeyboardModifier.NoModifier,
         )
     )
+    viewport.mouseMoveEvent(
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(24, 24),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.RightButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    viewport.mouseReleaseEvent(
+        QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(24, 24),
+            Qt.MouseButton.RightButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
 
-    assert viewport.selected_note is note
-    assert emitted == [note]
+    assert applied == [True]
+    assert emitted == []
 
 
 def test_open_note_in_chart_file_launches_source_line(monkeypatch, tmp_path) -> None:
