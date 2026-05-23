@@ -266,6 +266,11 @@ def _air_path_world_y(note: Note, *, end: bool = False) -> float | None:
     if note.note_type in (NoteType.AHD, NoteType.AHX):
         g0 = 4.0
         return _air_trace_world_y_from_g0(g0)
+    # Air arrows (AIR, AUR, AUL, ADW, ADR, ADL) use the minimum air height
+    if note.note_type in {NoteType.AIR, NoteType.AUR, NoteType.AUL,
+                          NoteType.ADW, NoteType.ADR, NoteType.ADL}:
+        g0 = _chart_air_height_to_g0(RENDER_CHART_AIR_HEIGHT_MIN)
+        return _air_trace_world_y_from_g0(g0)
     return None
 
 
@@ -838,8 +843,9 @@ class PlayView3D(QWidget):
             anchor, end = anchor_info
             world_y = _air_path_world_y(anchor, end=end)
             if world_y is None:
-                _, screen_y, _ = self._world_z_to_screen(depth, vanish_y, judge_y)
-                return screen_y
+                # Anchor is ground-level (TAP, CHR, etc.) — use default air height
+                g0 = _chart_air_height_to_g0(RENDER_CHART_AIR_HEIGHT_MIN)
+                world_y = _air_trace_world_y_from_g0(g0)
 
         _, screen_y = _project_point(
             0.0,
