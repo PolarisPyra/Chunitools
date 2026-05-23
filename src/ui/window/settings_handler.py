@@ -66,7 +66,7 @@ class SettingsHandler:
             self.w.metadata_editor.setVisible(self.w._show_editor_panel)
         should_show = self.w._show_warning_panel or self.w._show_note_inspector or self.w._show_editor_panel
         self.w.inspector_panel.setVisible(should_show)
-        QTimer.singleShot(0, self.w._position_overlays)
+        QTimer.singleShot(0, self.w.overlay_manager.reposition)
 
     # ── Panel toggles ──
 

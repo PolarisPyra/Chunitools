@@ -162,13 +162,13 @@ def create_menu_bar(window: MainWindow) -> None:
     window.undo_action = QAction("Undo Note Placement", window)
     window.undo_action.setShortcuts([QKeySequence("Ctrl+Z")])
     window.undo_action.setEnabled(False)
-    window.undo_action.triggered.connect(window.undo_note_edit)
+    window.undo_action.triggered.connect(window.note_editor.undo)
     edit_menu.addAction(window.undo_action)
 
     window.redo_action = QAction("Redo Note Placement", window)
     window.redo_action.setShortcuts([QKeySequence("Ctrl+Y"), QKeySequence("Ctrl+Shift+Z")])
     window.redo_action.setEnabled(False)
-    window.redo_action.triggered.connect(window.redo_note_edit)
+    window.redo_action.triggered.connect(window.note_editor.redo)
     edit_menu.addAction(window.redo_action)
 
     # --- View Menu ---

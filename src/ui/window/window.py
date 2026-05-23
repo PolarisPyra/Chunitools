@@ -116,7 +116,8 @@ class MainWindow(QMainWindow):
         create_menu_bar(self)
         init_status_widgets(self)
         self._setup_connections()
-        self._install_spacebar_guard()
+        for w in self.findChildren(QPushButton):
+            w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._view_stack.setCurrentIndex(0)
         self._switch_view_mode(0)
         self.overlay_manager.reposition()
@@ -682,7 +683,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, "export_chart_action"):
             self.export_chart_action.setEnabled(has)
         self.note_editor._sync_history_actions()
-        self._sync_editor_enabled()
+        if self.metadata_editor:
+            self.metadata_editor._sync_editor_enabled()
+        self._sync_place_mode()
 
         suffix = "*" if self._chart_dirty else ""
         path = self.current_file_path
