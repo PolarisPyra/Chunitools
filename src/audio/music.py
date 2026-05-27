@@ -72,17 +72,24 @@ class _PcmAudioStream(Protocol):
 
 
 def _vgmstream_cli_path() -> Path | None:
-    """Return the bundled vgmstream-cli path, or None if not found."""
-    exe_name = "vgmstream-cli.exe" if sys.platform == "win32" else "vgmstream-cli"
+    """Return the configured vgmstream-cli path, or None if not found."""
+    from src.config import settings
+    from src.utils.audio import find_vgmstream_cli
 
-    # When running from a PyInstaller bundle, binaries land in _MEIPASS/vgmstream/
+    configured = getattr(settings, "vgstreamcli_path", "")
+    if configured:
+        cli = find_vgmstream_cli(configured)
+        if cli is not None:
+            return cli
+
+    # Legacy fallback: bundled binary (PyInstaller or vendor/)
+    exe_name = "vgmstream-cli.exe" if sys.platform == "win32" else "vgmstream-cli"
     bundle_root = Path(getattr(sys, "_MEIPASS", ""))
     if bundle_root:
         candidate = bundle_root / BUNDLED_CLI_DIR_NAME / exe_name
         if candidate.exists():
             return candidate
 
-    # Dev / source tree: vendor/vgmstream/<platform>/
     platform_name = _platform_dir_name()
     candidate = (
         Path(__file__).resolve().parents[2]
@@ -104,7 +111,7 @@ class _VgmstreamCliStream:
         cli = _vgmstream_cli_path()
         if cli is None:
             raise VgmstreamError(
-                "could not find vgmstream-cli; expected it bundled under vendor/vgmstream/<platform>/"
+                "could not find vgmstream-cli; set vgstreamcli_path in Settings (Ctrl+,)"
             )
 
         # Decode to a temporary WAV file. We keep the temp file open so

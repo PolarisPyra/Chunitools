@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent  # noqa: TC002
 
 if TYPE_CHECKING:
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 
 class KeyHandler:

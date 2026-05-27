@@ -15,7 +15,7 @@ from src.ui.theme.notes import TRACE_COLORS, get_note_color
 
 if TYPE_CHECKING:
     from src.core.models import Chart
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 
 AIR_ANCHORED_TYPES = {

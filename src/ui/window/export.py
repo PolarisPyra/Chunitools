@@ -17,7 +17,7 @@ from src.ui.view.chart_renderer import ChartRenderer
 from src.ui.view.export import export_to_image
 
 if TYPE_CHECKING:
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 CHART_EXTENSIONS = {".c2s"}
 

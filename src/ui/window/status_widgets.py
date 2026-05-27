@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from src.ui import theme
 
 if TYPE_CHECKING:
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 
 def init_status_widgets(window: MainWindow) -> None:

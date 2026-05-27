@@ -21,7 +21,7 @@ from src.core.const import NoteType
 from src.ui.theme.notes import get_note_color
 
 if TYPE_CHECKING:
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 
 class MenuCursorFilter(QObject):

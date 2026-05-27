@@ -9,7 +9,7 @@ from src.core.editor import add_note, remove_notes
 if TYPE_CHECKING:
     from src.core.models import Chart
     from src.notes import Note
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 
 class NoteHistory:

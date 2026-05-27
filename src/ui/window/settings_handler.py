@@ -8,7 +8,7 @@ from src.core.config import DEFAULT_SCROLL_SPEED, settings
 from src.ui.components.viewport import DEFAULT_VIEW_LANE_WIDTH
 
 if TYPE_CHECKING:
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 
 class SettingsHandler:

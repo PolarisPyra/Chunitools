@@ -25,7 +25,7 @@ from src.ui.window.widgets import make_command_button, make_section_label
 
 if TYPE_CHECKING:
     from src.core.models import Chart
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 AUDIO_FILE_FILTER = (
     "Supported Audio (*.flac *.wav *.mp3 *.awb);;"

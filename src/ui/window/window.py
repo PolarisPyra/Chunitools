@@ -26,14 +26,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.config import USER_CONFIG_DIR, get_sounds_dir, resolve_startup_data_root, settings
-from src.core.const import NoteType
+from src.config import USER_CONFIG_DIR, get_sounds_dir, resolve_startup_data_root, settings
+from src.const import NoteType
 from src.core.read import DataScanner, MetadataPreview, load_chart_file
 from src.core.write import save_chart_file
 from src.engine.playback import PlaybackController
 
 if TYPE_CHECKING:
-    from src.core.models import Chart
+    from src.model import Chart
     from src.notes import Note
 from src.services.playback import PlaybackCoordinator
 from src.ui import theme
@@ -53,11 +53,11 @@ from src.ui.window.inspectors import (
     resolve_warning_note,
 )
 from src.ui.window.key_handler import KeyHandler
-from src.ui.window.menus import MenuCursorFilter, create_menu_bar
+from src.workspace.menubar import MenuCursorFilter, create_menu_bar
 from src.ui.window.metadata_editor import MetadataEditor
 from src.ui.window.overlay_manager import OverlayManager
 from src.ui.window.settings_handler import SettingsHandler
-from src.ui.window.status_widgets import init_status_widgets
+from src.shell.status_bar import init_status_widgets
 from src.ui.window.widgets import (
     make_command_button,
     make_inspector_text,
@@ -70,6 +70,12 @@ LOGGER = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     """Main application window for the Chunithm Chart Viewer."""
+
+    def _open_settings_dialog(self) -> None:
+        """Open the full settings preferences dialog."""
+        from src.dialogs.settings import open_settings
+
+        open_settings(self)
 
     def __init__(self) -> None:  # noqa: PLR0915
         super().__init__()
@@ -106,6 +112,7 @@ class MainWindow(QMainWindow):
         self.export_audio_action: QAction
         self.export_all_action: QAction
         self.change_data_dir_action: QAction
+        self.open_settings_action: QAction
         self.open_config_dir_action: QAction
         self.undo_action: QAction
         self.redo_action: QAction

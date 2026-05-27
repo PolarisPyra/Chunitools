@@ -12,7 +12,7 @@ from src.notes import AirSlide, AirSlideStart, Note, Slide, SlideTo
 if TYPE_CHECKING:
     from src.core.models import Chart
     from src.engine.timeline import ChartTimeline
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 
 GROUND_SLIDE_TYPES = {NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC}

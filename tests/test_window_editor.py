@@ -18,7 +18,7 @@ from src.ui.components.viewport import DEFAULT_VIEW_LANE_WIDTH, ChartViewport
 from src.ui.view.projection import ViewProjection
 from src.ui.view.renderer.base import CHED_BAR_LINE, CHED_BEAT_LINE, BaseRenderer
 from src.ui.view.timeline_widget import TimelineWidget
-from src.ui.window.window import MainWindow
+from src.workspace.layout import MainWindow
 
 
 @pytest.fixture(autouse=True)

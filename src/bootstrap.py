@@ -9,7 +9,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from src.core.config import USER_CONFIG_DIR
-from src.ui.window import MainWindow
+from src.workspace.layout import MainWindow
 
 __all__ = ["BOOTSTRAP_ONLY_ENV", "BOOTSTRAP_ONLY_VALUE", "create_application", "run"]
 

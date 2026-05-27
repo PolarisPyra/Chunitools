@@ -57,5 +57,4 @@ scratch/
 *_profile.txt
 profile*.svg
 spy_top.txt
-AGENTS.md
-.pi
+.pi/

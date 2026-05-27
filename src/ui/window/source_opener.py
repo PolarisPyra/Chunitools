@@ -16,7 +16,7 @@ from PySide6.QtGui import QDesktopServices
 from src.notes import AirSlideStart, Note, Slide
 
 if TYPE_CHECKING:
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 LOGGER = logging.getLogger(__name__)
 EDITOR_ENV_VAR = "CHUNITOOLS_EDITOR"

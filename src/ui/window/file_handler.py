@@ -11,7 +11,7 @@ from src.core.write import create_blank_chart, save_chart_file, save_music_xml a
 
 if TYPE_CHECKING:
     from src.core.models import Chart
-    from src.ui.window.window import MainWindow
+    from src.workspace.layout import MainWindow
 
 
 class FileHandler:
