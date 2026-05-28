@@ -55,10 +55,10 @@ Pushing a tag triggers CI to build for all platforms and uploads to GitHub Relea
 git status
 
 # 2. Tag the release (pre-release / alpha / stable as appropriate)
-git tag v1.0.0-alpha.1
+git tag v0.1.0
 
 # 3. Push the tag
-git push origin v1.0.0-alpha.1
+git push origin v0.1.0
 
 # That's it — the Release workflow at .github/workflows/release.yml
 # will build for Linux, macOS (Apple Silicon), and Windows, then create
