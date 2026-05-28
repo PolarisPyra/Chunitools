@@ -77,4 +77,7 @@ git push origin v0.1.0
 
 - **vgmstream** is auto-downloaded by `scripts/download_vgmstream.py` during the build — no manual vendor setup needed.
 - The `chunitools.spec` file defines the PyInstaller build; you can also run `uv run pyinstaller --noconfirm chunitools.spec` directly.
-- The config file lives at `~/.config/chunitools/config.toml` (TOML format with sections — see `src/config.py`).
+- The config file lives at one of the following paths depending on your platform (TOML format with sections — see `src/config.py`):
+  - **Linux**: `~/.config/chunitools/config.toml`
+  - **macOS**: `~/Library/Application Support/chunitools/config.toml`
+  - **Windows**: `%LOCALAPPDATA%\chunitools\config.toml`
