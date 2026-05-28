@@ -42,23 +42,28 @@ ROOT = Path(__file__).resolve().parent.parent
 VENDOR_DIR = ROOT / "vendor" / "vgmstream"
 
 
-def _latest_tag(accept: str = "application/vnd.github+json") -> str:
+DEFAULT_TAG = "r2117"
+
+
+def _latest_tag() -> str:
     """Return the tag name of the latest vgmstream release.
 
-    Uses ``GITHUB_TOKEN`` from the environment when available (CI) to
-    avoid GitHub API rate limits.
+    Falls back to ``DEFAULT_TAG`` on API errors (rate limiting in CI).
     """
     import os  # noqa: PLC0415
     from urllib.request import Request  # noqa: PLC0415
 
     url = f"{GITHUB_API}/latest"
-    headers = {"Accept": accept}
-    token = os.environ.get("GITHUB_TOKEN")
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    req = urlopen(Request(url, headers=headers))  # noqa: S310
-    data = json.loads(req.read().decode())
-    return data["tag_name"]
+    try:
+        req = urlopen(Request(url, headers=headers), timeout=10)  # noqa: S310
+        data = json.loads(req.read().decode())
+        return data["tag_name"]
+    except Exception:  # noqa: BLE001
+        return DEFAULT_TAG
 
 
 def _asset_url(tag: str, platform: str) -> str:
@@ -127,7 +132,7 @@ def main() -> None:  # noqa: PLR0915
         choices=list(PLATFORM_ASSETS) + ["all"],
         help="Target platform(s) to download for (default: all)",
     )
-    parser.add_argument("--tag", help="Specific release tag (default: latest)")
+    parser.add_argument("--tag", help=f"Specific release tag (default: latest, or {DEFAULT_TAG} on API error)")
     args = parser.parse_args()
 
     platforms: list[str] = args.platforms
