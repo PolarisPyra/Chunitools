@@ -767,9 +767,13 @@ class ChartViewport(QWidget):
 
         def _test_note(n: Note, abs_pos_override: float | None = None) -> None:
             nonlocal best_distance, best_note
-            # For slide steps, render position is at end_cell, not start cell
-            cell_attr = getattr(n, "end_cell", n.cell)
-            width_attr = getattr(n, "end_width", n.width)
+            # Slide steps render at end_cell; the wrapper itself renders at cell
+            if abs_pos_override is not None:
+                cell_attr = getattr(n, "end_cell", n.cell)
+                width_attr = getattr(n, "end_width", n.width)
+            else:
+                cell_attr = n.cell
+                width_attr = n.width
             note_x = projection.x(cell_attr)
             note_w = projection.w(width_attr)
             abs_pos = abs_pos_override or timeline.note_abs_pos(n)
@@ -860,8 +864,13 @@ class ChartViewport(QWidget):
         matches: list[Note] = []
 
         def _test_rect(n, note_y: float) -> None:
-            cell_attr = getattr(n, "end_cell", n.cell)
-            width_attr = getattr(n, "end_width", n.width)
+            from src.notes import SlideTo as _SlideTo
+            if isinstance(n, _SlideTo):
+                cell_attr = n.end_cell
+                width_attr = n.end_width
+            else:
+                cell_attr = n.cell
+                width_attr = n.width
             x_pos = projection.x(cell_attr) + offset_x
             y_pos = note_y + baseline_y
             width = projection.w(width_attr)
@@ -899,8 +908,12 @@ class ChartViewport(QWidget):
         timeline = self.chart.timeline
 
         def _draw_rect(n, n_abs_pos: float) -> None:
-            cell_attr = getattr(n, "end_cell", n.cell)
-            width_attr = getattr(n, "end_width", n.width)
+            if isinstance(n, SlideTo):
+                cell_attr = n.end_cell
+                width_attr = n.end_width
+            else:
+                cell_attr = n.cell
+                width_attr = n.width
             x_pos = projection.x(cell_attr)
             y_pos = projection.y(n_abs_pos, current_pos)
             width = projection.w(width_attr)
