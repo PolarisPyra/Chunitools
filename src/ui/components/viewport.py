@@ -283,6 +283,9 @@ class ChartViewport(QWidget):
 
     def set_note_debug_overlay_active(self, active: bool) -> None:
         self.note_debug_overlay.set_active(active)
+        self.painter_engine.debug_active = active
+        if hasattr(self.painter_engine, "_delegate") and self.painter_engine._delegate:
+            self.painter_engine._delegate.debug_active = active
         if active:
             self.note_debug_overlay.setGeometry(self.rect())
 

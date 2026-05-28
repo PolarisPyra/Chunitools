@@ -186,6 +186,7 @@ class BaseRenderer(
         self.constants = RendererConstants()
         self.cache = RenderCache()
         self.logger = logger
+        self.debug_active: bool = False
 
         # Parse version for runtime behavior switching
         try:
@@ -320,6 +321,12 @@ class BaseRenderer(
             for task in bucket_tasks:
                 task.function(painter, task.note, current_position, timeline)
 
+    # --- Priority layers ----------------------------------------------------
+    # Ground bodies: 10–14
+    # Ground heads:  31–41
+    # Air primitives: 60–69 (above all ground)
+    # Debug overlays: 80+ (editor-only, above everything)
+
     # --- Dispatch Logic ---
 
     def _dispatch_note_tasks(
@@ -330,8 +337,6 @@ class BaseRenderer(
             render_tasks.append(RenderTask(10, self._draw_hold_background, note, note_tick))
         elif note_type in (NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC):
             render_tasks.append(RenderTask(12, self._draw_slide_background, note, note_tick))
-        elif note_type == NoteType.ASO:
-            render_tasks.append(RenderTask(20, self._draw_air_solid_background, note, note_tick))
         elif note_type in (NoteType.HHD, NoteType.HHX):
             render_tasks.append(RenderTask(20, self._draw_heaven_hold_background, note, note_tick))
         self._dispatch_air_tasks(render_tasks, note, note_type, note_tick)
@@ -340,31 +345,37 @@ class BaseRenderer(
     def _dispatch_air_tasks(
         self, render_tasks: list[RenderTask], note: Any, note_type: NoteType, tick: int
     ) -> None:
-        """Version-aware air task dispatcher."""
+        """Dispatch air-layer primitives (priority 60–69, above all ground)."""
         if note_type in (NoteType.ASD, NoteType.ASC, NoteType.ASX) or isinstance(
             note, AirSlideStart
         ):
-            render_tasks.append(RenderTask(20, self._draw_air_slide_background, note, tick))
-            render_tasks.append(RenderTask(35, self._draw_air_action_bar, note, tick))
-            # If wrapper resolves to a ground note type, dispatch its foreground
+            # Air slide body — air foreground
+            render_tasks.append(RenderTask(60, self._draw_air_slide_background, note, tick))
+            # Air action bars — above air bodies, below arrows
+            render_tasks.append(RenderTask(65, self._draw_air_action_bar, note, tick))
+            # If wrapper resolves to a ground note type, dispatch its ground head
             resolved = self._resolve_air_wrapped_foreground(note)
             if resolved is not None:
                 render_tasks.append(RenderTask(38, resolved, note, tick))
 
         elif note_type == NoteType.ALD:
-            render_tasks.append(RenderTask(20, self._draw_crash_slide_background, note, tick))
-            render_tasks.append(RenderTask(35, self._draw_air_action_bar, note, tick))
+            # Air crash/trace body — air foreground
+            render_tasks.append(RenderTask(60, self._draw_crash_slide_background, note, tick))
+            render_tasks.append(RenderTask(65, self._draw_air_action_bar, note, tick))
 
         elif note_type in (NoteType.AHD, NoteType.AHX):
-            render_tasks.append(RenderTask(20, self._draw_air_hold_background, note, tick))
-            # AHX is hybrid ground bar — no floating action bar in air zone
+            # Air hold trace — air foreground
+            render_tasks.append(RenderTask(60, self._draw_air_hold_background, note, tick))
             if note_type == NoteType.AHD:
-                render_tasks.append(RenderTask(35, self._draw_air_action_bar, note, tick))
+                render_tasks.append(RenderTask(65, self._draw_air_action_bar, note, tick))
+
+        elif note_type == NoteType.ASO:
+            render_tasks.append(RenderTask(60, self._draw_air_solid_background, note, tick))
 
         elif note_type in AIR_ARROW_NOTES:
-            # Air arrows render in the air foreground layer above all ground notes.
-            render_tasks.append(RenderTask(38, self._draw_air_step_for_air, note, tick))
-            render_tasks.append(RenderTask(55, self._draw_air, note, tick))
+            # Air step replacement at air-mid, arrow at air-top
+            render_tasks.append(RenderTask(64, self._draw_air_step_for_air, note, tick))
+            render_tasks.append(RenderTask(66, self._draw_air, note, tick))
 
     def _dispatch_foreground_tasks(
         self, render_tasks: list[RenderTask], note: Any, note_type: NoteType, tick: int

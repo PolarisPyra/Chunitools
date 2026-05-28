@@ -249,9 +249,14 @@ class AirRendererMixin(RendererMixinSupport):
     ) -> None:
         if isinstance(note, AirSlideStart):
             self._draw_air_slide_chain(painter, note, current_position, timeline)
+            if self.debug_active:
+                self._draw_air_wrapper_debug_outline(painter, note, current_position, timeline)
             return
         if not self.visible_note_types.get(note.note_type.value, True):
             return
+        # Debug outline for standalone ASC/ASD wrappers
+        if self.debug_active and note.note_type in (NoteType.ASD, NoteType.ASC, NoteType.ASX):
+            self._draw_air_wrapper_debug_outline(painter, note, current_position, timeline)
         ys = self.projection.y(timeline.note_abs_pos(note), current_position)
         ye = self.projection.y(timeline.note_abs_end_pos(note), current_position)
         xs = self.projection.x(float(note.cell))
@@ -557,6 +562,41 @@ class AirRendererMixin(RendererMixinSupport):
             width,
             self.colors.air_up,
         )
+
+    def _draw_air_wrapper_debug_outline(
+        self,
+        painter: QPainter,
+        note: Any,
+        current_position: float,
+        timeline: Any,
+    ) -> None:
+        """Draw a debug outline for ASC/ASD wrapper nodes showing wrapped type."""
+        y = self.projection.y(timeline.note_abs_pos(note), current_position)
+        x = self.projection.x(float(note.cell))
+        w = self.projection.w(float(note.width))
+        rect = QRectF(x, y - self.constants.HEAD_HEIGHT / 2, w, self.constants.HEAD_HEIGHT)
+
+        # Dashed outline in wrapper color
+        wrapper_color = QColor("#c0c0c0")
+        wrapper_color.setAlpha(140)
+        pen = QPen(wrapper_color, 1.5, Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(
+            rect,
+            rect.height() * self.constants.CORNER_RADIUS_RATIO,
+            rect.height() * self.constants.CORNER_RADIUS_RATIO,
+        )
+
+        # Label with wrapped type
+        wrapped = getattr(note, "target_note", "?")
+        label = f"{note.note_type.value}→{wrapped}"
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor("#c0c0c0")))
+        text_rect = QRectF(x, y - self.constants.HEAD_HEIGHT / 2 - 16, w, 14)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, label)
 
     def _draw_air_bar_at(
         self,
