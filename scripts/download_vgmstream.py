@@ -22,7 +22,7 @@ from urllib.request import urlopen
 REPO = "vgmstream/vgmstream"
 GITHUB_API = f"https://api.github.com/repos/{REPO}/releases"
 
-# Maps our platform name → GitHub asset suffix and target dir
+# Maps our platform name -> GitHub asset suffix and target dir
 PLATFORM_ASSETS: dict[str, dict[str, str]] = {
     "linux": {
         "asset": "vgmstream-linux.zip",
@@ -128,7 +128,7 @@ def main() -> None:  # noqa: PLR0915
     print(f"Target platforms:   {', '.join(platforms)}")
 
     for platform in platforms:
-        print(f"\n── {platform} ──")
+        print(f"\n--- {platform} ---")
         target = download(platform, tag)
         print(f"  Files in {target}:")
         for p in sorted(target.iterdir()):
