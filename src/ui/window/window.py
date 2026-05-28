@@ -67,6 +67,43 @@ from src.workspace.menubar import MenuCursorFilter, create_menu_bar
 
 LOGGER = logging.getLogger(__name__)
 
+_LOGS_DIR_NAME = "logs"
+
+
+def _setup_note_rendering_debug_log(
+    chart_title: str,
+    chart_music_id: str,
+    file_path: str,
+) -> None:
+    """Configure the note_rendering_debug logger with chart context.
+
+    Called when a chart is loaded. Writes chart metadata as the first log
+    entries so the log file is self-documenting.
+    """
+    log_dir = USER_CONFIG_DIR / _LOGS_DIR_NAME
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_title = "".join(c if c.isalnum() or c in "_-" else "_" for c in chart_title).strip("_")
+    safe_music_id = "".join(c for c in chart_music_id if c.isalnum() or c in "_-")
+    log_filename = f"note_rendering_debug_{safe_title}_{safe_music_id}.log"
+
+    logger = logging.getLogger("note_rendering_debug")
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+
+    handler = logging.FileHandler(
+        log_dir / log_filename, mode="w", encoding="utf-8"
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    handler.setLevel(logging.DEBUG)
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+
+    logger.info("Chart Title: %s", chart_title)
+    logger.info("Chart Music ID: %s", chart_music_id)
+    logger.info("Chart Path: %s", file_path)
+
 
 class MainWindow(QMainWindow):
     """Main application window for the Chunithm Chart Viewer."""
@@ -574,6 +611,11 @@ class MainWindow(QMainWindow):
             chart = load_chart_file(path)
             self.current_chart = chart
             self.current_file_path = path
+            _setup_note_rendering_debug_log(
+                chart.metadata.title,
+                chart.metadata.music_id,
+                path,
+            )
             self._chart_dirty = False
             self._chart_read_only = self._path_is_from_data_root(path)
             self.note_editor.clear_history()

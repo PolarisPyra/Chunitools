@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+
+NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -302,6 +304,11 @@ class BaseRenderer(
                 note_tasks = []
                 self._dispatch_note_tasks(note_tasks, note, timeline)
                 self.cache.tasks[note_id] = note_tasks
+
+            NOTE_DEBUG.debug("dispatch: %s m=%d:%d c=%d w=%d tasks=%d priorities=%s",
+                             note.note_type.value, note.measure, note.offset,
+                             note.cell, note.width, len(note_tasks),
+                             [t.priority for t in note_tasks])
 
             for task in note_tasks:
                 buckets.setdefault(task.priority, []).append(task)

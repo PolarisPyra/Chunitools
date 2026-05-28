@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+
+NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 import re
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
@@ -243,12 +245,12 @@ class C2sParser(IChartParser):
         # Deduplicate: some charts have identical lines that parse to the same note
         _seen: set[tuple[str, ...]] = set()
 
+        _dedup_skipped = 0
         for nt, args_tuple in self._raw_notes:
             args = list(args_tuple)
-            # Use the raw args tuple as the dedup key — catches full-line duplicates
-            # but preserves notes at the same position with different extra fields
             dedup_key = args_tuple
             if dedup_key in _seen:
+                _dedup_skipped += 1
                 continue
             _seen.add(dedup_key)
 
@@ -269,6 +271,10 @@ class C2sParser(IChartParser):
                         self._air_path_notes.append(note)
                     else:
                         self._ground_notes.append(note)
+
+        NOTE_DEBUG.debug("parse: dedup_skipped=%d total_raw=%d slide_segs=%d air_segs=%d ground=%d",
+                         _dedup_skipped, len(self._raw_notes), len(self._slide_segments),
+                         len(self._air_slide_segments), len(self._ground_notes))
 
     # -- Pass 2: Slide-segment chaining ---------------------------------------
 
@@ -340,6 +346,13 @@ class C2sParser(IChartParser):
                     steps=tuple(chain),
                 )
             )
+
+            _steps_log = " → ".join(
+                f"{s.note_type.value}({s.measure}:{s.offset} c{s.cell}→{s.end_cell})"
+                for s in chain
+            )
+            NOTE_DEBUG.debug("chain: head=%s steps=%d [%s]",
+                             start_seg.note_type.value, len(chain), _steps_log)
 
         orphan_slides = [s for s in self._slide_segments if s not in used]
         if orphan_slides:

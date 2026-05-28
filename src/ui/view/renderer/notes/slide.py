@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -8,6 +9,8 @@ from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from src.core.const import NoteType, RenderRole
 from src.notes.slide import Slide, SlideTo
 from src.ui.view.renderer.notes.support import RendererMixinSupport, SlidePathPoint
+
+NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 
 NOTE_ROLE_START = "ST"
 NOTE_ROLE_LINE_CONTROL = "LC"
@@ -100,9 +103,13 @@ class SlideRendererMixin(RendererMixinSupport):
 
         # Head tap — always drawn at the wrapper's start position
         if self._should_draw_slide_head(note, timeline):
+            head_color = self._slide_start_color(note)
+            NOTE_DEBUG.debug("  slide_head: %s m=%d:%d c=%d w=%d color=%s",
+                             note.note_type.value, note.measure, note.offset,
+                             note.cell, note.width, "ex_tap" if head_color == self.colors.ex_tap else "slide")
             self._draw_tap(
                 painter, note, current_position, timeline,
-                self._slide_start_color(note),
+                head_color,
             )
 
         # Draw each step. Visible steps (SLD/SXD) get a colored tap;
@@ -162,6 +169,12 @@ class SlideRendererMixin(RendererMixinSupport):
             self.projection.w(step.end_width),
         )
         rect = QRectF(x, y - self.constants.HEAD_HEIGHT / 2, w, self.constants.HEAD_HEIGHT)
+
+        visible = getattr(step, "is_visible", True)
+        color_name = "ctrl_pt" if not visible else ("ex_tap" if step.note_type in (NoteType.SXD, NoteType.SXC) else "slide")
+        NOTE_DEBUG.debug("  step_draw: %s m=%d:%d c=%d→%d visible=%s color=%s",
+                         step.note_type.value, step.measure, step.offset,
+                         step.cell, step.end_cell, visible, color_name)
 
         if not getattr(step, "is_visible", True):
             # Invisible steps (SLC/SXC) draw as grey control points
