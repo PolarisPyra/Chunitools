@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QPainter, QPen
 
 from src.core.const import NoteType, RenderRole
 from src.notes.slide import Slide, SlideTo
@@ -28,68 +28,45 @@ class SlideRendererMixin(RendererMixinSupport):
         if not isinstance(note, Slide):
             return
 
-        # Build all path points — ribbon must go through ALL points
+        # Build all path points — body must go through ALL points
         # (including invisible SLC control points) to follow the curve.
-        # The is_visible flag only affects the foreground (tap vs control point).
         points = self._slide_path_points_with_visibility(note, current_position, timeline)
         if len(points) < 2:
             return
 
         color = self.colors.slide_line
 
-        # Draw ribbon through ALL points (matches Rust: ribbon goes through everything)
-        for a, b in zip(points, points[1:], strict=False):
-            self._draw_slide_segment_ribbon(painter, a, b, color)
+        # Build bezier body path matching game's SpkInterpolationBezierAD3
+        body_path = self._build_slide_body_path(points)
 
-        # Core path through all points
-        centers = [point.center for point in points]
-        core_path = self._build_polyline_path(centers)
-
-        core_color = QColor(color)
-        core_color.setAlpha(210)
-        painter.setPen(
-            QPen(
-                core_color,
-                3.0,
-                Qt.PenStyle.SolidLine,
-                Qt.PenCapStyle.RoundCap,
-                Qt.PenJoinStyle.RoundJoin,
-            )
-        )
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawPath(core_path)
-
-    def _draw_slide_segment_ribbon(
-        self,
-        painter: QPainter,
-        a: SlidePathPoint,
-        b: SlidePathPoint,
-        color: QColor,
-    ) -> None:
-        quad = QPolygonF([a.left, b.left, b.right, a.right])
-
-        body = QColor(color)
-        body.setAlpha(95)
-
-        edge = QColor(color)
-        edge.setAlpha(170)
-
+        # Fill the slide body with semi-transparent gradient
+        body_color = QColor(color)
+        body_color.setAlpha(95)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(body))
-        painter.drawPolygon(quad)
+        painter.setBrush(QBrush(body_color))
+        painter.drawPath(body_path)
 
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(
-            QPen(
-                edge,
-                2.0,
-                Qt.PenStyle.SolidLine,
-                Qt.PenCapStyle.RoundCap,
-                Qt.PenJoinStyle.RoundJoin,
+        # Draw left/right outline edges as bezier curves
+        if len(points) >= 2:
+            left_points = [point.left for point in points]
+            right_points = [point.right for point in points]
+            left_path = self._build_bezier_path(left_points)
+            right_path = self._build_bezier_path(right_points)
+
+            edge_color = QColor(color)
+            edge_color.setAlpha(170)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(
+                QPen(
+                    edge_color,
+                    2.0,
+                    Qt.PenStyle.SolidLine,
+                    Qt.PenCapStyle.RoundCap,
+                    Qt.PenJoinStyle.RoundJoin,
+                )
             )
-        )
-        painter.drawLine(a.left, b.left)
-        painter.drawLine(a.right, b.right)
+            painter.drawPath(left_path)
+            painter.drawPath(right_path)
 
     def _draw_slide_foreground(
         self,

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from PySide6.QtCore import QPointF, QRectF
-    from PySide6.QtGui import QColor, QPainter, QPainterPath
+    from PySide6.QtGui import QColor, QPainter
 
     from src.ui.theme.color_profile import ColorProfile, GradientColor
     from src.ui.view.projection import ViewProjection
@@ -67,9 +67,6 @@ class RendererMixinSupport:
         raise NotImplementedError
 
     def _draw_border(self, painter: QPainter, rect: QRectF) -> None:
-        raise NotImplementedError
-
-    def _build_polyline_path(self, points: list[QPointF]) -> QPainterPath:
         raise NotImplementedError
 
     def _air_path_endpoints(

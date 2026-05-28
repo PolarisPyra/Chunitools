@@ -471,16 +471,6 @@ class BaseRenderer(
 
         return path
 
-    def _build_polyline_path(self, points: list[QPointF]) -> QPainterPath:
-        """Legacy polyline builder — kept for reference but no longer used for slides."""
-        path = QPainterPath()
-        if not points:
-            return path
-        path.moveTo(points[0])
-        for point in points[1:]:
-            path.lineTo(point)
-        return path
-
     def _append_path_segments(self, target: QPainterPath, source: QPainterPath) -> None:
         for index in range(1, source.elementCount()):
             element = source.elementAt(index)

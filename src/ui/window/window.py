@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -85,7 +86,8 @@ def _setup_note_rendering_debug_log(
 
     safe_title = "".join(c if c.isalnum() or c in "_-" else "_" for c in chart_title).strip("_")
     safe_music_id = "".join(c for c in chart_music_id if c.isalnum() or c in "_-")
-    log_filename = f"note_rendering_debug_{safe_title}_{safe_music_id}.log"
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    log_filename = f"note_rendering_debug_{timestamp}_{safe_title}_{safe_music_id}.log"
 
     logger = logging.getLogger("note_rendering_debug")
     for handler in list(logger.handlers):
