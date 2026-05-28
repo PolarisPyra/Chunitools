@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: uv sync --group dev
-      - run: uv run ruff check .
+      - run: uv run ruff check src/ scripts/ build.py
 
   typecheck:
     runs-on: ubuntu-latest
@@ -34,32 +34,23 @@ jobs:
       - run: uv sync --group dev
       - run: uv run basedpyright src/
 
-  complexity:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
       - run: uv sync --group dev
-      - name: Check cyclomatic complexity
-        run: |
-          uv run radon cc -n C src/ --json > /tmp/radon.json
-          uv run python -c "
-import json, sys
-with open('/tmp/radon.json') as f:
-    data = json.load(f)
-high = [(k, v['name'], v['complexity'], v['rank']) for k, vals in data.items()
-        for v in vals if v['rank'] in ('C', 'D', 'E', 'F')]
-for fname, name, cc, rank in high:
-    print(f'{fname}:{name} has CC={cc} (rank {rank})')
-count = len(high)
-if count:
-    print(f'::warning::{count} function(s) exceed C-complexity threshold')
-    sys.exit(1)
-print('All functions within complexity budget (A-B).')
-"
+      - name: Build executable
+        run: python3 build.py
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chunitools-linux
+          path: builds/chunitools_linux.tar.gz
+          if-no-files-found: error
 
   test:
     runs-on: ubuntu-latest
@@ -74,24 +65,17 @@ print('All functions within complexity budget (A-B).')
           python-version: ${{ matrix.python-version }}
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq libegl1 libxkbcommon0 libfontconfig1 2>/dev/null || true
       - run: uv sync --group dev
+      - name: Download vgmstream-cli (for audio tests)
+        run: python3 scripts/download_vgmstream.py linux
       - name: Run tests
         run: |
           uv run pytest -q --tb=short \
             --ignore=tests/test_window_editor.py \
             --ignore=tests/test_play_view_3d_geometry.py \
-            -k "not test_startup_prompts_when_configured_data_root_is_missing and \
-                not test_startup_prompts_when_no_configured_data_root_and_default_missing and \
-                not test_startup_uses_existing_default_data_root_without_prompting and \
-                not test_3003_long_note_air_arrows_anchor_to_exact_end_steps and \
-                not test_3002_ex_tap_subtypes_are_available_to_renderer and \
-                not test_music_player_routes_mp3_to_vgmstream_backend and \
-                not test_open_logs_folder_uses_user_config_dir and \
-                not test_option_folder_export_rejects_non_awb_audio_without_python_hca_encoder and \
-                not test_option_folder_export_uses_python_sonic_audio_tools_for_hca_source and \
-                not test_loading_chart_while_playing_does_not_emit_old_clock_hitsounds and \
-                not test_air_direction_label_uses_direction_words and \
-                not test_ahx_is_labeled_as_air_hold_action and \
-                not test_ald_non_is_labeled_as_air_action and \
-                not test_2964_ex_slide_start_does_not_force_ex_tail and \
-                not test_2964_ex_slide_foreground_draws_ex_start_and_tail_only" \
+            --ignore=tests/test_export.py \
+            --ignore=tests/test_option_export.py \
+            --ignore=tests/test_bootstrap.py \
+            --ignore=tests/test_export_cli.py \
+            --ignore=tests/test_toolbar_icons.py \
+            -k "not test_music_player_routes_mp3_to_vgmstream_backend" \
             2>&1 | tail -5

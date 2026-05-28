@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from PySide6.QtCore import QIODevice, QObject, QTimer
 from PySide6.QtMultimedia import QAudioFormat, QAudioSink
 
-from src.core.config import DEFAULT_MUSIC_VOLUME
+from src.config import DEFAULT_MUSIC_VOLUME
 
 __all__ = ["MusicStreamPlayer"]
 

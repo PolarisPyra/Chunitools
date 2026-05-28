@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import contextlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QElapsedTimer, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeyEvent, QResizeEvent
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -20,13 +20,14 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSlider,
+    QSpinBox,
     QSplitter,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from src.config import USER_CONFIG_DIR, get_sounds_dir, resolve_startup_data_root, settings
+from src.config import USER_CONFIG_DIR, get_sounds_dir, settings
 from src.const import NoteType
 from src.core.read import DataScanner, MetadataPreview, load_chart_file
 from src.core.write import save_chart_file
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
     from src.model import Chart
     from src.notes import Note
 from src.services.playback import PlaybackCoordinator
+from src.shell.status_bar import init_status_widgets
 from src.ui import theme
 from src.ui.components.fps_overlay import FpsOverlay
 from src.ui.components.picker import ChartPicker
@@ -53,17 +55,15 @@ from src.ui.window.inspectors import (
     resolve_warning_note,
 )
 from src.ui.window.key_handler import KeyHandler
-from src.workspace.menubar import MenuCursorFilter, create_menu_bar
 from src.ui.window.metadata_editor import MetadataEditor
 from src.ui.window.overlay_manager import OverlayManager
 from src.ui.window.settings_handler import SettingsHandler
-from src.shell.status_bar import init_status_widgets
 from src.ui.window.widgets import (
-    make_command_button,
     make_inspector_text,
     make_section_label,
     make_status_label,
 )
+from src.workspace.menubar import MenuCursorFilter, create_menu_bar
 
 LOGGER = logging.getLogger(__name__)
 
@@ -75,7 +75,33 @@ class MainWindow(QMainWindow):
         """Open the full settings preferences dialog."""
         from src.dialogs.settings import open_settings
 
+        old_root = settings.data_root
         open_settings(self)
+        # If the data directory changed in settings, rescan and refresh the picker
+        if settings.data_root != old_root:
+            self._rescan_data_directory()
+
+    def _rescan_data_directory(self) -> None:
+        """Re-scan the configured data directory and refresh the picker."""
+        path = settings.data_root
+        if not path:
+            return
+        self.scanner = DataScanner(path)
+        self.songs = self.scanner.scan()
+        self.picker.songs = self.songs
+        self.picker._populate_all_lists()
+        self.playback_service.shutdown()
+        sounds_path = get_sounds_dir(path)
+        self.playback_service = PlaybackCoordinator(
+            self.playback, str(sounds_path / "tap.wav"), path, self
+        )
+        self.playback_service.set_hitsound_volume(settings.hitsound_volume)
+        self.playback_service.set_music_volume(settings.music_volume)
+        self.visualizer.user_seeked.disconnect()
+        self.visualizer.user_seeked.connect(self.playback_service.seek)
+        self.play_view.user_seeked.disconnect()
+        self.play_view.user_seeked.connect(self.playback_service.seek)
+        self.statusBar().showMessage(f"Scanned data directory: {path}", 3000)
 
     def __init__(self) -> None:  # noqa: PLR0915
         super().__init__()
@@ -95,7 +121,7 @@ class MainWindow(QMainWindow):
         self._show_warning_panel = False
         self._show_note_inspector = False
         self._show_editor_panel = False
-        self._last_status_measure_text = "MEASURE: 0.00"
+
         self._inspector_grouped = True
         self._current_inspector_notes: list[Note] = []
         self._last_export_root: str | None = None
@@ -113,7 +139,6 @@ class MainWindow(QMainWindow):
         self.export_all_action: QAction
         self.change_data_dir_action: QAction
         self.open_settings_action: QAction
-        self.open_config_dir_action: QAction
         self.undo_action: QAction
         self.redo_action: QAction
         self.toggle_warnings_action: QAction
@@ -136,12 +161,7 @@ class MainWindow(QMainWindow):
         self.key_handler = KeyHandler(self)
         self.overlay_manager = OverlayManager(self)
 
-        startup_data_root = resolve_startup_data_root(settings)
-        data_path = startup_data_root.path
-        if startup_data_root.should_prompt:
-            prompted_path = self.file_handler.prompt_data_root()
-            if prompted_path:
-                data_path = prompted_path
+        data_path = settings.data_root
 
         sounds_path = get_sounds_dir(data_path)
         self.playback_service = PlaybackCoordinator(
@@ -161,8 +181,19 @@ class MainWindow(QMainWindow):
         create_menu_bar(self)
         init_status_widgets(self)
         self._setup_connections()
+        # Set pointing-hand cursor on all interactive widgets (Qt stylesheets don't support
+        # "cursor" for all widget types, generating "Unknown property cursor" warnings).
+        hand = Qt.CursorShape.PointingHandCursor
         for w in self.findChildren(QPushButton):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            w.setCursor(hand)
+        for w in self.findChildren(QComboBox):
+            w.setCursor(hand)
+        for w in self.findChildren(QSlider):
+            w.setCursor(hand)
+        for w in self.findChildren(QSpinBox):
+            w.setCursor(hand)
+        self.menuBar().setCursor(hand)
         self._view_stack.setCurrentIndex(0)
         self._switch_view_mode(0)
         self.overlay_manager.reposition()
@@ -250,106 +281,11 @@ class MainWindow(QMainWindow):
         info_layout = QHBoxLayout(self.info_panel)
         info_layout.setContentsMargins(15, 0, 15, 0)
         info_layout.setSpacing(20)
-        self.status_measure_label = make_status_label("MEASURE: 0.00")
-        self.status_measure_label.setStyleSheet(f"color: {theme.WHITE}; font-weight: bold;")
-        info_layout.addWidget(self.status_measure_label)
-        info_layout.addStretch()
+
         self.status_bpm_label = make_status_label("BPM: ---", muted=False)
         self.status_bpm_label.setStyleSheet(f"color: {theme.WHITE};")
         info_layout.addWidget(self.status_bpm_label)
         left_layout.addWidget(self.info_panel)
-
-        self.left_controls_panel = QFrame()
-        self.left_controls_panel.setObjectName("LeftControlsPanel")
-        self.left_controls_panel.setStyleSheet(f"background: {theme.SURFACE_NAV}; border: none;")
-        left_controls_layout = QVBoxLayout(self.left_controls_panel)
-        left_controls_layout.setContentsMargins(12, 8, 12, 8)
-        left_controls_layout.setSpacing(8)
-
-        slider_style = (
-            "QSlider::groove:horizontal { height: 4px; "
-            f"background: {theme.BASE_GRAY_900}; border-radius: 2px; }}"
-            "QSlider::handle:horizontal { width: 10px; margin: -4px 0; "
-            f"background: {theme.ACCENT}; border-radius: 5px; }}"
-            f"QSlider::sub-page:horizontal {{ background: {theme.ACCENT_PROGRESS}; border-radius: 2px; }}"
-        )
-        volume_label_style = f"color: {theme.WHITE}; font-size: 10px;"
-
-        hitsound_row = QHBoxLayout()
-        hitsound_row.setSpacing(8)
-        self.hitsound_volume_label = QLabel("Hit sound")
-        self.hitsound_volume_label.setStyleSheet(volume_label_style)
-        hitsound_row.addWidget(self.hitsound_volume_label)
-        self.hitsound_volume_slider = QSlider(Qt.Orientation.Horizontal)
-        self.hitsound_volume_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.hitsound_volume_slider.setRange(0, 100)
-        self.hitsound_volume_slider.setStyleSheet(slider_style)
-        self.hitsound_volume_slider.setValue(round(settings.hitsound_volume * 100))
-        self.hitsound_volume_slider.setCursor(Qt.CursorShape.PointingHandCursor)
-        hitsound_row.addWidget(self.hitsound_volume_slider)
-        left_controls_layout.addLayout(hitsound_row)
-
-        music_row = QHBoxLayout()
-        music_row.setSpacing(8)
-        self.music_volume_label = QLabel("Music")
-        self.music_volume_label.setStyleSheet(volume_label_style)
-        music_row.addWidget(self.music_volume_label)
-        self.music_volume_slider = QSlider(Qt.Orientation.Horizontal)
-        self.music_volume_slider.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.music_volume_slider.setRange(0, 100)
-        self.music_volume_slider.setStyleSheet(slider_style)
-        self.music_volume_slider.setValue(round(settings.music_volume * 100))
-        self.music_volume_slider.setCursor(Qt.CursorShape.PointingHandCursor)
-        music_row.addWidget(self.music_volume_slider)
-        left_controls_layout.addLayout(music_row)
-
-        folder_row = QHBoxLayout()
-        folder_row.setSpacing(8)
-        try:
-            import qtawesome as qta  # noqa: PLC0415
-        except ImportError:
-            qta = None
-        icon_button_style = (
-            f"QPushButton {{ background: {theme.TRANSPARENT}; "
-            f"color: {theme.WHITE}; "
-            f"border: 1px solid {theme.BORDER_CONTROL}; border-radius: 4px; padding: 0px; "
-            "min-width: 24px; max-width: 24px; "
-            "min-height: 24px; max-height: 24px; }}"
-            f"QPushButton:hover {{ background: {theme.SURFACE_STATUS_BUTTON_HOVER}; }}"
-        )
-        self.open_folder_btn = QPushButton()
-        self.open_folder_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.open_folder_btn.setStyleSheet(icon_button_style)
-        self.open_folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.open_folder_btn.setToolTip("Open export folder")
-        if qta:
-            self.open_folder_btn.setIcon(qta.icon("fa5s.folder", color=theme.WHITE))
-            self.open_folder_btn.setIconSize(QSize(14, 14))
-        self.open_folder_btn.setFixedSize(24, 24)
-        self.open_folder_btn.clicked.connect(export_ops.open_last_export_folder)
-        self.open_folder_btn.setVisible(settings.show_export_button)
-        folder_row.addWidget(self.open_folder_btn)
-
-        self.open_logs_btn = QPushButton()
-        self.open_logs_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.open_logs_btn.setStyleSheet(icon_button_style)
-        self.open_logs_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.open_logs_btn.setToolTip("Open logs folder")
-        if qta:
-            self.open_logs_btn.setIcon(qta.icon("fa5s.folder-open", color=theme.WHITE))
-            self.open_logs_btn.setIconSize(QSize(14, 14))
-            self.open_logs_btn.setFixedSize(24, 24)
-        else:
-            self.open_logs_btn.setText("Logs")
-            self.open_logs_btn.setFixedHeight(24)
-            self.open_logs_btn.setMinimumWidth(48)
-        self.open_logs_btn.clicked.connect(export_ops.open_logs_folder)
-        self.open_logs_btn.setVisible(settings.show_export_button)
-        folder_row.addWidget(self.open_logs_btn)
-        folder_row.addStretch()
-        left_controls_layout.addLayout(folder_row)
-
-        left_layout.addWidget(self.left_controls_panel)
         self.content_splitter.addWidget(left_panel)
 
         viewport_container = QFrame()
@@ -436,37 +372,137 @@ class MainWindow(QMainWindow):
         inspector_layout.addWidget(self.metadata_editor)
         self.content_splitter.addWidget(self.inspector_panel)
 
-        self.bottom_bar = QFrame()
-        self.bottom_bar.setFixedHeight(36)
-        self.bottom_bar.setObjectName("BottomControlBar")
-        self.bottom_layout = QHBoxLayout(self.bottom_bar)
-        self.bottom_layout.setContentsMargins(12, 0, 12, 0)
-        self.bottom_layout.setSpacing(12)
+        # ── Timeline toolbar (Rust-style, between scrubber and viewport) ──
+        self._build_timeline_toolbar(viewport_layout)
 
-        self.btn_play = make_command_button("PLAY", width=100)
-        self.btn_play.setObjectName("CommandButton")
-        self.btn_play.setFixedHeight(22)
-        self.btn_play.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_play.clicked.connect(self.toggle_playback)
-        self.bottom_layout.addWidget(self.btn_play, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.bottom_layout.addStretch()
-        self.jump_input = QLineEdit()
-        self.jump_input.setPlaceholderText("Measure...")
-        self.jump_input.setFixedWidth(100)
-        self.jump_input.setFixedHeight(22)
-        self.jump_input.returnPressed.connect(self._jump_to_position)
-        self.bottom_layout.addWidget(self.jump_input, 0, Qt.AlignmentFlag.AlignVCenter)
-        self.btn_jump = make_command_button("JUMP", width=64)
-        self.btn_jump.setObjectName("CommandButton")
-        self.btn_jump.setFixedHeight(22)
-        self.btn_jump.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_jump.clicked.connect(self._jump_to_position)
-        self.bottom_layout.addWidget(self.btn_jump, 0, Qt.AlignmentFlag.AlignVCenter)
-        main_layout.addWidget(self.bottom_bar)
         self.content_splitter.setStretchFactor(0, 0)
         self.content_splitter.setStretchFactor(1, 1)
         self.content_splitter.setStretchFactor(2, 0)
         self.content_splitter.setSizes([360, 1160, 480])
+
+    def _build_timeline_toolbar(self, parent_layout: QVBoxLayout) -> None:
+        """Build Rust-style compact toolbar between scrubber and viewport."""
+        bar = QFrame()
+        bar.setFixedHeight(34)
+        bar.setObjectName("TimelineToolbar")
+        bar.setStyleSheet(
+            f"background: {theme.SURFACE_NAV};"
+        )
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(8, 0, 8, 0)
+        layout.setSpacing(6)
+        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        btn_style = (
+            f"QPushButton {{ background: transparent; color: {theme.WHITE}; "
+            "border: none; border-radius: 4px; padding: 4px; "
+            "min-width: 26px; max-width: 26px; min-height: 26px; max-height: 26px; }}"
+            f"QPushButton:hover {{ background: {theme.SURFACE_LIST_HOVER}; }}"
+        )
+
+        try:
+            import qtawesome as qta
+            self._qta = qta
+        except ImportError:
+            self._qta = None
+
+        # ── Return to start ──
+        self.btn_reset_timeline = QPushButton()
+        self.btn_reset_timeline.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_reset_timeline.setStyleSheet(btn_style)
+        self.btn_reset_timeline.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_reset_timeline.setToolTip("Return to start")
+        if self._qta:
+            self.btn_reset_timeline.setIcon(self._qta.icon("fa5s.undo", color=theme.WHITE))
+            self.btn_reset_timeline.setIconSize(QSize(14, 14))
+        else:
+            self.btn_reset_timeline.setText("⟲")
+        self.btn_reset_timeline.clicked.connect(self._reset_timeline)
+        layout.addWidget(self.btn_reset_timeline, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        # ── Play / Pause ──
+        self.btn_play = QPushButton()
+        self.btn_play.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_play.setStyleSheet(btn_style)
+        self.btn_play.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_play.setToolTip("Play / Pause")
+        if self._qta:
+            self.btn_play.setIcon(self._qta.icon("fa5s.play", color=theme.WHITE))
+            self.btn_play.setIconSize(QSize(16, 16))
+        else:
+            self.btn_play.setText("▶")
+        self.btn_play.clicked.connect(self.toggle_playback)
+        layout.addWidget(self.btn_play)
+
+        # Track last known play state so we only update the icon when it changes.
+        self._last_play_state: bool | None = None
+
+        layout.addSpacing(8)
+
+        layout.addStretch()
+
+        # ── Measure label ──
+        measure_lbl = QLabel("Measure")
+        measure_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;")
+        measure_lbl.setFixedHeight(22)
+        layout.addWidget(measure_lbl, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.measure_display = QLineEdit()
+        self.measure_display.setReadOnly(True)
+        self.measure_display.setFrame(False)
+        self.measure_display.setFixedWidth(52)
+        self.measure_display.setFixedHeight(22)
+        self.measure_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.measure_display.setStyleSheet(
+            f"QLineEdit {{ background: {theme.SURFACE_ELEVATED}; color: {theme.WHITE}; "
+            "border: none; border-radius: 4px; "
+            "font-size: 12px; font-family: monospace; padding: 0 4px; }}"
+        )
+        self.measure_display.setText("001")
+        self.measure_display.mouseDoubleClickEvent = lambda e: self._start_measure_edit()
+        layout.addWidget(self.measure_display, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        self.measure_edit = QLineEdit()
+        self.measure_edit.setFrame(False)
+        self.measure_edit.setFixedWidth(52)
+        self.measure_edit.setFixedHeight(22)
+        self.measure_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.measure_edit.setStyleSheet(
+            f"QLineEdit {{ background: {theme.SURFACE_ELEVATED}; color: {theme.WHITE}; "
+            f"border: 1px solid {theme.ACCENT}; border-radius: 4px; "
+            "font-size: 12px; font-family: monospace; padding: 0 4px; }}"
+        )
+        self.measure_edit.hide()
+        self.measure_edit.returnPressed.connect(self._commit_measure_edit)
+        layout.addWidget(self.measure_edit)
+
+        parent_layout.addWidget(bar)
+        self._timeline_toolbar = bar
+
+    def _start_measure_edit(self) -> None:
+        self.measure_display.hide()
+        self.measure_edit.setText(self.measure_display.text())
+        self.measure_edit.show()
+        self.measure_edit.setFocus()
+        self.measure_edit.selectAll()
+
+    def _commit_measure_edit(self) -> None:
+        try:
+            target = float(self.measure_edit.text())
+            if self.current_chart:
+                self.playback_service.seek(target)
+        except ValueError:
+            pass
+        self.measure_edit.hide()
+        self.measure_display.show()
+
+    def _reset_timeline(self) -> None:
+        if self.current_chart:
+            # Stop playback first so the button returns to the play state
+            if self.playback.is_playing:
+                self.playback_service.toggle_playback()
+            self.playback_service.seek(0.0)
+        self._sync_play_button()
 
     # ── View ──
 
@@ -505,8 +541,6 @@ class MainWindow(QMainWindow):
         self.visualizer.note_size_drag_place_requested.connect(self.note_editor.place_note_at)
         self.visualizer.note_drag_place_requested.connect(self.note_editor.place_note_drag)
         self.visualizer.resized.connect(self.overlay_manager.reposition)
-        self.hitsound_volume_slider.valueChanged.connect(self.settings_handler.on_hitsound_volume)
-        self.music_volume_slider.valueChanged.connect(self.settings_handler.on_music_volume)
         self.playback.pos_changed.connect(self._on_playhead_moved)
 
     # ── Chart loading / display ──
@@ -603,15 +637,12 @@ class MainWindow(QMainWindow):
         self.visualizer.set_current_pos(pos)
         self.play_view.set_current_pos(pos)
         self.timeline_widget.set_playhead_measure(pos)
-        if not hasattr(self, "_label_update_timer"):
-            self._label_update_timer = QElapsedTimer()
-            self._label_update_timer.start()
-        if self._label_update_timer.elapsed() > 100:
-            text = f"MEASURE: {pos:.2f}"
-            if text != self._last_status_measure_text:
-                self._last_status_measure_text = text
-                self.status_measure_label.setText(text)
-            self._label_update_timer.restart()
+        # Update toolbar measure display
+        if hasattr(self, "measure_display") and not self.measure_edit.isVisible():
+            self.measure_display.setText(f"{int(pos):03d}")
+        # Sync button icon when playback ends naturally (is_playing -> False)
+        self._sync_play_button()
+
 
     def _on_note_selected(self, note: Note | None) -> None:
         if note is None:
@@ -769,6 +800,18 @@ class MainWindow(QMainWindow):
 
     # ── Playback ──
 
+    def _sync_play_button(self) -> None:
+        """Update the play/pause button icon to match actual playback state."""
+        is_p = self.playback.is_playing
+        if is_p == self._last_play_state:
+            return
+        self._last_play_state = is_p
+        if self._qta:
+            icon_name = "fa5s.pause" if is_p else "fa5s.play"
+            self.btn_play.setIcon(self._qta.icon(icon_name, color=theme.WHITE))
+        else:
+            self.btn_play.setText("⏸" if is_p else "▶")
+
     def toggle_playback(self) -> None:
         if not self.current_chart:
             return
@@ -776,12 +819,7 @@ class MainWindow(QMainWindow):
         is_p = self.playback.is_playing
         self.visualizer.set_playback_active(is_p)
         self.play_view.set_playback_active(is_p)
-        self.btn_play.setText("PAUSE" if is_p else "PLAY CHART")
-
-    def _jump_to_position(self) -> None:
-        if self.current_chart:
-              with contextlib.suppress(ValueError):
-                  self.playback_service.seek(float(self.jump_input.text()))
+        self._sync_play_button()
 
     # ── Events ──
 

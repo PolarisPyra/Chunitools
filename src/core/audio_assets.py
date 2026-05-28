@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -10,6 +11,8 @@ if TYPE_CHECKING:
     from src.core.models import Chart
 
 __all__ = ["resolve_chart_audio_path", "resolve_chart_awb_path"]
+
+LOGGER = logging.getLogger(__name__)
 
 CUE_FILE_DIR_TEMPLATE = "cueFile{music_id:06d}"
 CUE_FILE_XML_NAME = "CueFile.xml"
@@ -46,24 +49,38 @@ def _read_awb_name(cue_file_xml: Path) -> str | None:
 
 
 def resolve_chart_awb_path(chart: Chart, data_root: str | Path) -> Path | None:
-    """Find the AWB music bank for a chart when CHUNITHM cue metadata exists."""
+    """Find the AWB music bank for a chart when CHUNITHM cue metadata exists.
+
+    Searches recursively under *data_root* so the game data can be nested
+    (e.g. under ``App/data/``) rather than at the root.
+    """
     music_id = _parse_music_id(chart.metadata.music_id)
     if music_id is None:
         return None
 
     root = Path(data_root)
     cue_dir_name = CUE_FILE_DIR_TEMPLATE.format(music_id=music_id)
-    cue_pattern = f"A*/cueFile/{cue_dir_name}/{CUE_FILE_XML_NAME}"
+    # Recursive glob catches nested layouts like App/data/A*/cueFile/...
+    cue_pattern = f"**/A*/cueFile/{cue_dir_name}/{CUE_FILE_XML_NAME}"
     cue_xml_candidates = sorted(root.glob(cue_pattern))
+    LOGGER.debug(
+        "resolve_chart_awb_path: searching %s for music_id=%s",
+        root / cue_pattern,
+        music_id,
+    )
     for cue_file_xml in cue_xml_candidates:
         awb_name = _read_awb_name(cue_file_xml)
         if awb_name is None:
+            LOGGER.debug("  found %s but no awbFile/path node", cue_file_xml)
             continue
 
         awb_path = cue_file_xml.parent / awb_name
         if awb_path.exists():
+            LOGGER.debug("  resolved AWB path: %s", awb_path)
             return awb_path
+        LOGGER.debug("  AWB path %s does not exist", awb_path)
 
+    LOGGER.debug("  no AWB found for music_id=%s", music_id)
     return None
 
 
@@ -75,8 +92,18 @@ def resolve_chart_audio_path(
     """Find custom editor audio first, then fall back to arcade AWB metadata."""
     custom_path = _resolve_custom_audio_path(chart.metadata.audio_path, data_root, chart_path)
     if custom_path is not None:
+        LOGGER.debug("resolve_chart_audio_path: custom audio at %s", custom_path)
         return custom_path
-    return resolve_chart_awb_path(chart, data_root)
+    LOGGER.debug(
+        "resolve_chart_audio_path: no custom audio, trying AWB (music_id=%s)",
+        chart.metadata.music_id,
+    )
+    awb_path = resolve_chart_awb_path(chart, data_root)
+    if awb_path is not None:
+        LOGGER.debug("resolve_chart_audio_path: found AWB at %s", awb_path)
+    else:
+        LOGGER.debug("resolve_chart_audio_path: no AWB found for music_id=%s", chart.metadata.music_id)
+    return awb_path
 
 
 def _resolve_custom_audio_path(

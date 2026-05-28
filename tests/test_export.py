@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.core import config
+from src import config
 from src.ui.window import export as export_module
 
 

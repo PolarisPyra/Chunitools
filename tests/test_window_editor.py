@@ -9,8 +9,8 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QKeySequence, QMouseEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QLabel, QPushButton
 
-from src.core import config
-from src.core.config import settings
+from src import config
+from src.config import settings
 from src.core.const import NoteType
 from src.core.write import serialize_c2s
 from src.notes import Air, AirHold, AirHoldStart, AirSlideStart, CrashSlide, Hold, Slide
@@ -24,7 +24,7 @@ from src.workspace.layout import MainWindow
 @pytest.fixture(autouse=True)
 def isolate_user_config(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "USER_CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(config, "USER_CONFIG_PATH", tmp_path / "config.yaml")
+    monkeypatch.setattr(config, "USER_CONFIG_PATH", tmp_path / "config.toml")
     monkeypatch.setattr(config, "LEGACY_USER_CONFIG_PATH", tmp_path / "config.json")
 
 

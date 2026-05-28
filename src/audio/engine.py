@@ -5,7 +5,7 @@ import os
 from PySide6.QtCore import QObject, QUrl
 from PySide6.QtMultimedia import QSoundEffect
 
-from src.core.config import DEFAULT_HITSOUND_VOLUME
+from src.config import DEFAULT_HITSOUND_VOLUME
 
 # A pool of effects allows for simultaneous note playback with zero mixing overhead
 POOL_SIZE = 16

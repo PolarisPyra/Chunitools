@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,8 @@ from PySide6.QtCore import QObject, QTimer
 from src.audio.engine import AudioEngine
 from src.audio.music import MusicStreamPlayer
 from src.core.audio_assets import resolve_chart_audio_path
+
+LOGGER = logging.getLogger(__name__)
 
 MUSIC_MASTER_POSITION_EPSILON = 1 / 128  # Increased from 1/384 to reduce jitter
 
@@ -60,8 +63,10 @@ class PlaybackCoordinator(QObject):
     def set_chart_audio(self, chart: Chart, chart_path: str | Path | None = None) -> bool:
         """Load chart audio, return True if audio loaded successfully."""
         audio_path = resolve_chart_audio_path(chart, self.data_root, chart_path)
+        LOGGER.debug("set_chart_audio: resolved path=%s", audio_path)
         self.music_player.set_source(audio_path)
         loaded = self.music_player.has_loaded_source
+        LOGGER.debug("set_chart_audio: loaded=%s duration=%.2f", loaded, self.music_player.duration_seconds)
         self.controller.set_playback_duration(self.music_player.duration_seconds)
         if loaded and self.controller.is_playing:
             self.music_player.play_from(self._chart_seconds_at_pos(self.controller.current_pos))

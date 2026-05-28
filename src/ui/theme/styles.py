@@ -57,8 +57,6 @@ QFrame#BottomControlBar {{
     border-bottom: none;
 }}
 
-
-
 QSplitter::handle {{
     background-color: {BORDER_PANEL};
 }}
@@ -282,13 +280,13 @@ QMenuBar {{
     color: {WHITE};
     border-bottom: 1px solid {BORDER_PANEL};
     font-weight: 500;
-    min-height: 36px;
+    min-height: 32px;
     padding: 0 12px;
 }}
 
 QMenuBar::item {{
-    padding: 0px 12px;
-    margin: 6px 2px;
+    padding: 0px 10px;
+    margin: 4px 1px;
     background-color: transparent;
     color: {WHITE};
     border-radius: 4px;
@@ -329,5 +327,14 @@ QMenu::separator {{
     height: 1px;
     background: {BORDER_PANEL};
     margin: 4px 8px;
+}}
+
+/* --- SPIN BOX --- */
+QSpinBox {{
+    background-color: {SURFACE_ELEVATED};
+    color: {WHITE};
+    border: 1px solid {BORDER_CONTROL};
+    border-radius: 4px;
+    padding: 2px 6px;
 }}
 """

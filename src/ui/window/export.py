@@ -11,7 +11,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
-from src.core.config import USER_CONFIG_DIR
+from src.config import USER_CONFIG_DIR
 from src.core.read import load_chart_file
 from src.ui.view.chart_renderer import ChartRenderer
 from src.ui.view.export import export_to_image

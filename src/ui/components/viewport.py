@@ -14,7 +14,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QScrollBar, QWidget
 
-from src.core.config import DEFAULT_SCROLL_SPEED
+from src.config import DEFAULT_SCROLL_SPEED
 from src.core.const import AIR_NOTE_TYPES, NoteType
 from src.ui import theme
 from src.ui.components.note_debug_overlay import NoteDebugOverlay

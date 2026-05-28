@@ -12,7 +12,7 @@ __all__ = ["DataScanner"]
 
 DEFAULT_SONG_NAME = "Unknown"
 DEFAULT_ARTIST_NAME = "Unknown"
-MUSIC_XML_PATTERN = "A*/music/*/Music.xml"
+MUSIC_XML_PATTERN = "**/Music.xml"
 TRUE_TEXT = "true"
 
 

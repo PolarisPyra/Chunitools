@@ -16,7 +16,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QMenu, QMenuBar
 
-from src.core.config import settings
+from src.config import settings
 from src.core.const import NoteType
 from src.ui.theme.notes import get_note_color
 
@@ -138,19 +138,22 @@ def create_menu_bar(window: MainWindow) -> None:  # noqa: PLR0915
     window.export_all_action.triggered.connect(window.export_all_charts)
     export_menu.addAction(window.export_all_action)
 
-    settings_menu = file_menu.addMenu("Settings")
-    settings_menu.setMouseTracking(True)
-    settings_menu.installEventFilter(window._menu_cursor_filter)
-
-    window.change_data_dir_action = QAction("Set Data Directory...", window)
-    window.change_data_dir_action.triggered.connect(window._change_data_root)
-    settings_menu.addAction(window.change_data_dir_action)
-
-    window.open_config_dir_action = QAction("Open Config Directory", window)
-    window.open_config_dir_action.triggered.connect(window._open_config_dir)
-    settings_menu.addAction(window.open_config_dir_action)
+    file_menu.addSeparator()
 
     file_menu.addSeparator()
+
+    window.rescan_data_action = QAction("Rescan Data Directory", window)
+    window.rescan_data_action.triggered.connect(window._rescan_data_directory)
+    file_menu.addAction(window.rescan_data_action)
+
+    window.open_settings_action = QAction("Settings...", window)
+    window.open_settings_action.setShortcut("Ctrl+,")
+    window.open_settings_action.triggered.connect(window._open_settings_dialog)
+    file_menu.addAction(window.open_settings_action)
+
+    window.open_logs_action = QAction("Open Logs Directory", window)
+    window.open_logs_action.triggered.connect(window.open_logs_folder)
+    file_menu.addAction(window.open_logs_action)
 
     close_action = QAction("Quit", window)
     close_action.setShortcut("Ctrl+Q")

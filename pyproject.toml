@@ -10,7 +10,7 @@ dependencies = [
     "qtawesome>=1.4.2",
     "pyflac>=3.0.0",
     "platformdirs>=4.9.6",
-    "pyyaml>=6.0.3",
+    "tomli>=2.0.1; python_version < '3.11'",
     "PyCriCodecsEx>=0.0.5",
 ]
 
@@ -58,7 +58,12 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "src/notes/*" = ["PLR0913", "TC001"]
 "src/ui/*" = ["PLC0415"]
+"src/audio/music.py" = ["PLC0415"]
+"src/model.py" = ["PLC0415"]
+"src/config.py" = ["PLR0911"]
+"src/ui/window/window.py" = ["PLR0915"]
 "tests/*" = ["PLR0913", "PLR0914", "PLR0915", "TCH", "PLC0415"]
+"build.py" = ["PLC0415"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true

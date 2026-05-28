@@ -10,8 +10,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from src.utils.platform import is_macos, is_windows
-
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -22,19 +20,19 @@ __all__ = [
     "validate_vgmstream_path",
 ]
 
-# Per-platform executable and library names for vgmstream.
-_VGMSTREAM_CLI_NAMES: tuple[str, ...]
-_VGMSTREAM_LIB_NAMES: tuple[str, ...]
-
-if is_windows():
-    _VGMSTREAM_CLI_NAMES = ("vgmstream-cli.exe", "vgstream-cli.exe")
-    _VGMSTREAM_LIB_NAMES = ("vgmstream.dll",)
-elif is_macos():
-    _VGMSTREAM_CLI_NAMES = ("vgmstream-cli",)
-    _VGMSTREAM_LIB_NAMES = ("libvgmstream.dylib",)
-else:  # Linux
-    _VGMSTREAM_CLI_NAMES = ("vgmstream-cli",)
-    _VGMSTREAM_LIB_NAMES = ("libvgmstream.so",)
+# Executable and library names for vgmstream on every platform.
+# We search ALL names regardless of host OS so that cross-platform
+# installations (e.g. WSL, Wine, downloaded archives) still work.
+_VGMSTREAM_CLI_NAMES: tuple[str, ...] = (
+    "vgmstream-cli",
+    "vgmstream-cli.exe",
+    "vgstream-cli.exe",
+)
+_VGMSTREAM_LIB_NAMES: tuple[str, ...] = (
+    "libvgmstream.so",
+    "libvgmstream.dylib",
+    "vgmstream.dll",
+)
 
 
 class VgmstreamValidation:

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-from src.core.config import settings
+from src.config import settings
 from src.core.write import create_blank_chart, save_chart_file, save_music_xml as write_music_xml
 
 if TYPE_CHECKING:

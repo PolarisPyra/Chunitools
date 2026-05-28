@@ -1,4 +1,4 @@
-"""User configuration loading and persistence."""
+"""User configuration loading and persistence (TOML format with sections)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,11 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 import platformdirs
-import yaml
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib  # type: ignore[import-untyped]
 
 # Support for PyInstaller bundles
 meipass = getattr(sys, "_MEIPASS", None)
@@ -21,7 +25,7 @@ else:
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
 SOUNDS_DIR = DEFAULT_DATA_DIR / "sounds"
 USER_CONFIG_DIR = Path(platformdirs.user_config_dir("chunitools"))
-USER_CONFIG_PATH = USER_CONFIG_DIR / "config.yaml"
+USER_CONFIG_PATH = USER_CONFIG_DIR / "config.toml"
 LEGACY_USER_CONFIG_PATH = USER_CONFIG_DIR / "config.json"
 DEFAULT_SCROLL_SPEED = 9.0
 DEFAULT_HITSOUND_VOLUME = 0.75
@@ -60,14 +64,154 @@ def get_sounds_dir(data_root: str | None = None) -> Path:
     return SOUNDS_DIR
 
 
+# ---------------------------------------------------------------------------
+# TOML section map: internal field name → (toml_section, toml_key)
+# ---------------------------------------------------------------------------
+_TOML_FIELD_MAP: dict[str, tuple[str, str]] = {
+    "data_root": ("paths", "data_root"),
+    "vgstreamcli_path": ("paths", "vgstreamcli_path"),
+    "window_width": ("window", "width"),
+    "window_height": ("window", "height"),
+    "last_difficulty": ("ui", "last_difficulty"),
+    "show_fps": ("ui", "show_fps"),
+    "show_radar": ("ui", "show_radar"),
+    "show_export_button": ("ui", "show_export_button"),
+    "show_warnings": ("ui", "show_warnings"),
+    "show_inspector": ("ui", "show_inspector"),
+    "show_note_debug_overlay": ("ui", "show_note_debug_overlay"),
+    "subdivisions": ("ui", "subdivisions"),
+    "scroll_speed": ("ui", "scroll_speed"),
+    "hitsound_volume": ("ui", "hitsound_volume"),
+    "music_volume": ("ui", "music_volume"),
+    "visible_note_types": ("visible_note_types", "__table__"),
+    "log_debug_level": ("logger", "debug_level"),
+    "log_3d": ("logger", "3D_Log"),
+    "log_2d": ("logger", "2D_Log"),
+}
+
+# Sections whose entire table is the value of a single dict field.
+_TABLE_FIELDS: set[str] = {"visible_note_types"}
+
+
+def _toml_value(val: object) -> str:
+    """Format a Python value as a TOML literal."""
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    if isinstance(val, str):
+        escaped = val.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    if isinstance(val, int):
+        return str(val)
+    if isinstance(val, float):
+        if val == int(val) and not (abs(val) >= 1e15 or 0 < abs(val) < 1e-10):
+            return str(int(val))
+        return repr(val)
+    if val is None:
+        return ""
+    raise TypeError(f"unsupported TOML type: {type(val).__name__}")
+
+
+def _is_toml_bare_key(key: str) -> bool:
+    """Return True if *key* is a valid TOML bare key (no quotes needed).
+
+    TOML bare keys allow ``[A-Za-z0-9_-]+`` — digits are fine at the start,
+    unlike Python identifiers.
+    """
+    if not key:
+        return False
+    return all(c.isalnum() or c in ("_", "-") for c in key)
+
+
+def _toml_encode(settings: UserSettings) -> str:
+    """Serialize *settings* to a TOML string with section headers."""
+    data = asdict(settings)
+
+    # Group fields into sections
+    sections: dict[str, dict[str, object]] = {}
+    for field_name, value in data.items():
+        if field_name not in _TOML_FIELD_MAP:
+            continue
+        section, key = _TOML_FIELD_MAP[field_name]
+        if field_name in _TABLE_FIELDS and isinstance(value, dict):
+            # Whole-table field: the section gets every dict entry
+            sections[section] = value  # type: ignore[assignment]
+        else:
+            sections.setdefault(section, {})[key] = value
+
+    lines: list[str] = []
+    # Ensure a stable output order
+    section_order = [
+        "paths", "window", "ui", "visible_note_types", "logger",
+    ]
+    for section_name in section_order:
+        table = sections.get(section_name)
+        if table is None:
+            continue
+        if section_name in _TABLE_FIELDS:
+            # Whole-table section
+            assert isinstance(table, dict)
+            lines.append(f"[{section_name}]")
+            for k, v in table.items():
+                qualified = f'"{k}"' if not _is_toml_bare_key(k) else k
+                lines.append(f"{qualified} = {_toml_value(v)}")
+        else:
+            assert isinstance(table, dict)
+            lines.append(f"[{section_name}]")
+            for key, value in table.items():
+                qualified = f'"{key}"' if not _is_toml_bare_key(key) else key
+                lines.append(f"{qualified} = {_toml_value(value)}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _toml_decode(content: str) -> dict[str, object]:
+    """Parse TOML content into a flat dict of field_name → value."""
+    parsed = tomllib.loads(content)
+
+    # Build reverse map: (section, key) → field_name (for non-table fields)
+    reverse: dict[tuple[str, str], str] = {}
+    for field_name, (section, key) in _TOML_FIELD_MAP.items():
+        if field_name not in _TABLE_FIELDS:
+            reverse[(section, key)] = field_name
+
+    flat: dict[str, object] = {}
+    for section_name, table in parsed.items():
+        if not isinstance(table, dict):
+            continue
+        if section_name in _TABLE_FIELDS:
+            # Find the matching field name for this whole-table section
+            for field_name, (sec, _key) in _TOML_FIELD_MAP.items():
+                if sec == section_name and field_name in _TABLE_FIELDS:
+                    flat[field_name] = table
+                    break
+        else:
+            for key, value in table.items():
+                field_name = reverse.get((section_name, key))
+                if field_name is not None:
+                    flat[field_name] = value
+
+    return flat
+
+
+# ---------------------------------------------------------------------------
+# Settings dataclass
+# ---------------------------------------------------------------------------
+
+
 @dataclass
 class UserSettings:
-    """User-mutable settings that persist in config.yaml."""
+    """User-mutable settings that persist in config.toml."""
 
+    # ── [paths] ──
     data_root: str = ""
     vgstreamcli_path: str = ""
+
+    # ── [window] ──
     window_width: int = 1920
     window_height: int = 1080
+
+    # ── [ui] ──
     last_difficulty: int = 0
     show_fps: bool = False
     show_radar: bool = False
@@ -79,23 +223,29 @@ class UserSettings:
     scroll_speed: float = DEFAULT_SCROLL_SPEED
     hitsound_volume: float = DEFAULT_HITSOUND_VOLUME
     music_volume: float = DEFAULT_MUSIC_VOLUME
+
+    # ── [visible_note_types] ──
     visible_note_types: dict[str, bool] = field(
         default_factory=lambda: dict(DEFAULT_VISIBLE_NOTE_TYPES)
     )
 
+    # ── [logger] ──
+    log_debug_level: str = "info"
+    log_3d: bool = False
+    log_2d: bool = False
+
     def save(self) -> None:
-        """Persist settings to disk."""
+        """Persist settings to disk as a TOML file."""
         USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with USER_CONFIG_PATH.open("w", encoding="utf-8") as file_handle:
-            yaml.dump(asdict(self), file_handle, default_flow_style=False)
+        with USER_CONFIG_PATH.open("w", encoding="utf-8") as fh:
+            fh.write(_toml_encode(self))
 
 
 @dataclass(frozen=True)
 class StartupDataRoot:
-    """Resolved startup data directory and whether startup should prompt for it."""
+    """Resolved startup data directory."""
 
     path: str
-    should_prompt: bool
     from_config: bool
 
 
@@ -103,51 +253,19 @@ def resolve_startup_data_root(
     user_settings: UserSettings,
     default_data_dir: Path = DEFAULT_DATA_DIR,
 ) -> StartupDataRoot:
-    """Choose the startup data root from saved config when it is usable."""
+    """Resolve the startup data root from config, with legacy fallback."""
     configured_root = user_settings.data_root.strip()
-    if configured_root:
-        if Path(configured_root).expanduser().exists():
-            return StartupDataRoot(
-                path=configured_root,
-                should_prompt=False,
-                from_config=True,
-            )
-        legacy_root = _load_legacy_data_root()
-        if legacy_root:
-            user_settings.data_root = legacy_root
-            user_settings.save()
-            return StartupDataRoot(
-                path=legacy_root,
-                should_prompt=False,
-                from_config=True,
-            )
-
-        LOGGER.warning(
-            "Configured data_root does not exist: %s. Prompting for a replacement data directory.",
-            configured_root,
-        )
-        return StartupDataRoot(
-            path=configured_root,
-            should_prompt=True,
-            from_config=True,
-        )
+    if configured_root and Path(configured_root).expanduser().exists():
+        return StartupDataRoot(path=configured_root, from_config=True)
 
     legacy_root = _load_legacy_data_root()
     if legacy_root:
         user_settings.data_root = legacy_root
         user_settings.save()
-        return StartupDataRoot(
-            path=legacy_root,
-            should_prompt=False,
-            from_config=True,
-        )
+        return StartupDataRoot(path=legacy_root, from_config=True)
 
     default_path = str(default_data_dir)
-    return StartupDataRoot(
-        path=default_path,
-        should_prompt=not default_data_dir.exists(),
-        from_config=False,
-    )
+    return StartupDataRoot(path=default_path, from_config=False)
 
 
 def _load_legacy_data_root() -> str:
@@ -155,8 +273,8 @@ def _load_legacy_data_root() -> str:
     if not LEGACY_USER_CONFIG_PATH.exists():
         return ""
     try:
-        with LEGACY_USER_CONFIG_PATH.open("r", encoding="utf-8") as file_handle:
-            data = json.load(file_handle)
+        with LEGACY_USER_CONFIG_PATH.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
     except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
         LOGGER.warning("Failed to load legacy config from %s: %s", LEGACY_USER_CONFIG_PATH, exc)
         return ""
@@ -180,6 +298,7 @@ def _load_legacy_data_root() -> str:
 
 
 def _settings_from_mapping(data: object) -> UserSettings:
+    """Build a UserSettings from a flat dict (used by tests / TOML decode)."""
     if not isinstance(data, dict):
         return UserSettings()
 
@@ -190,17 +309,44 @@ def _settings_from_mapping(data: object) -> UserSettings:
     return UserSettings(**filtered_data)
 
 
+def _migrate_yaml_to_toml() -> UserSettings | None:
+    """Migrate settings from old ``config.yaml`` to ``config.toml``, return them or ``None``."""
+    yaml_path = USER_CONFIG_DIR / "config.yaml"
+    if not yaml_path.exists():
+        return None
+    try:
+        import yaml  # noqa: PLC0415
+
+        with yaml_path.open("r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh)
+        if not isinstance(raw, dict):
+            return None
+        settings = _settings_from_mapping(raw)
+        settings.save()
+        LOGGER.info("Migrated settings from config.yaml to config.toml")
+        # Archive the old YAML so we don't re-migrate
+        yaml_path.rename(yaml_path.with_suffix(".yaml.bak"))
+        return settings
+    except Exception as exc:  # noqa: BLE001
+        LOGGER.warning("Failed to migrate config.yaml: %s", exc)
+        return None
+
+
 def load_settings() -> UserSettings:
     """Load settings from disk or return defaults (and persist them)."""
     if not USER_CONFIG_PATH.exists():
+        migrated = _migrate_yaml_to_toml()
+        if migrated is not None:
+            return migrated
         defaults = UserSettings()
         defaults.save()
         return defaults
 
     try:
-        with USER_CONFIG_PATH.open("r", encoding="utf-8") as file_handle:
-            return _settings_from_mapping(yaml.safe_load(file_handle))
-    except (OSError, TypeError, ValueError, yaml.YAMLError) as exc:
+        raw = USER_CONFIG_PATH.read_text(encoding="utf-8")
+        flat = _toml_decode(raw)
+        return _settings_from_mapping(flat)
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as exc:
         LOGGER.warning("Failed to load settings from %s: %s", USER_CONFIG_PATH, exc)
         return UserSettings()
 

@@ -53,25 +53,10 @@ jobs:
       - name: Download vgmstream-cli
         shell: bash
         run: |
-          VG_VER="r2010"
           OS="${{ matrix.os_label }}"
-          mkdir -p "vendor/vgmstream/$OS"
-          case "$OS" in
-            linux)
-              curl -sL "https://github.com/vgmstream/vgmstream/releases/download/${VG_VER}/vgmstream-cli_${VG_VER}_Ubuntu64.tar.gz" \
-                | tar xz -C "vendor/vgmstream/$OS" vgmstream-cli 2>/dev/null || true
-              ;;
-            macos)
-              curl -sL "https://github.com/vgmstream/vgmstream/releases/download/${VG_VER}/vgmstream-cli_${VG_VER}_macOS.tar.gz" \
-                | tar xz -C "vendor/vgmstream/$OS" vgmstream-cli 2>/dev/null || true
-              ;;
-            windows)
-              curl -sLO "https://github.com/vgmstream/vgmstream/releases/download/${VG_VER}/vgmstream-cli_${VG_VER}_win64.zip"
-              unzip -o "vgmstream-cli_${VG_VER}_win64.zip" vgmstream-cli.exe -d "vendor/vgmstream/$OS" 2>/dev/null || true
-              rm -f "vgmstream-cli_${VG_VER}_win64.zip"
-              ;;
-          esac
-          echo "vgmstream status:"; ls -la "vendor/vgmstream/$OS/" 2>/dev/null || echo "(none, audio will fallback)"
+          python3 scripts/download_vgmstream.py "${OS}"
+          echo "vgmstream status:"
+          ls -la "vendor/vgmstream/${OS}/" 2>/dev/null || echo "(none, audio will fallback)"
 
       - name: Build with PyInstaller
         run: uv run pyinstaller --noconfirm chunitools.spec
