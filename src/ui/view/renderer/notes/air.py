@@ -651,6 +651,22 @@ class AirRendererMixin(RendererMixinSupport):
         step_count = len(note.steps)
         for index, step in enumerate(note.steps):
             abs_pos += step.duration / timeline.resolution
+            # ASC steps (except the last) draw as slim transparent grey control points
+            if step.note_type == NoteType.ASC and index != step_count - 1:
+                y = self.projection.y(abs_pos, current_position)
+                x = self.projection.x(float(step.end_cell))
+                w = self.projection.w(float(step.end_width))
+                h = self.constants.ACTION_BAR_HEIGHT
+                rect = QRectF(x, y - h / 2, w, h)
+                radius = rect.height() * self.constants.CORNER_RADIUS_RATIO
+                border_color = QColor("#808080")
+                border_color.setAlpha(127)
+                fill_color = QColor("#808080")
+                fill_color.setAlpha(self.constants.CONTROL_POINT_ALPHA)
+                painter.setPen(QPen(border_color, 1))
+                painter.setBrush(QBrush(fill_color))
+                painter.drawRoundedRect(rect, radius, radius)
+                continue
             if not self._air_slide_step_draws_bar(index, step_count, step):
                 continue
             NOTE_DEBUG.debug("  air_step_bar: step=%d/%d %s cell=%s w=%s pos=%.4f",
@@ -670,7 +686,14 @@ class AirRendererMixin(RendererMixinSupport):
         step_count: int,
         step: Any,
     ) -> bool:
+        # ASD/ASX always get purple action bars.
+        # ASC gets a transparent grey control-point rect (like SLC).
+        # The last step always gets a purple action bar regardless of type.
         return step.note_type in {NoteType.ASD, NoteType.ASX} or index == step_count - 1
+
+    def _air_slide_step_is_control_point(self, step: Any) -> bool:
+        """ASC steps that aren't the chain's last step draw as control points."""
+        return step.note_type == NoteType.ASC
 
     def _draw_air_joint_bar(
         self,
