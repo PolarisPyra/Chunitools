@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.os }}
+    name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -18,16 +18,28 @@ jobs:
         include:
           - os: ubuntu-latest
             os_label: linux
+            label: Linux
             ext: ""
             archive_fmt: tar.gz
+            archive_name: chunitools_linux
+          - os: macos-13
+            os_label: macos
+            label: macOS (Intel)
+            ext: ""
+            archive_fmt: tar.gz
+            archive_name: chunitools_macos_x86_64
           - os: macos-latest
             os_label: macos
+            label: macOS (Apple Silicon)
             ext: ""
             archive_fmt: tar.gz
+            archive_name: chunitools_macos_arm64
           - os: windows-latest
             os_label: windows
+            label: Windows
             ext: ".exe"
             archive_fmt: zip
+            archive_name: chunitools_windows
 
     steps:
       - uses: actions/checkout@v4
@@ -53,10 +65,9 @@ jobs:
       - name: Download vgmstream-cli
         shell: bash
         run: |
-          OS="${{ matrix.os_label }}"
-          python3 scripts/download_vgmstream.py "${OS}"
+          python3 scripts/download_vgmstream.py "${{ matrix.os_label }}"
           echo "vgmstream status:"
-          ls -la "vendor/vgmstream/${OS}/" 2>/dev/null || echo "(none, audio will fallback)"
+          ls -la "vendor/vgmstream/${{ matrix.os_label }}/" 2>/dev/null || echo "(none, audio will fallback)"
 
       - name: Build with PyInstaller
         run: uv run pyinstaller --noconfirm chunitools.spec
@@ -64,35 +75,34 @@ jobs:
       - name: Prepare archive
         shell: bash
         run: |
-          OS="${{ matrix.os_label }}"
+          ARCHIVE="${{ matrix.archive_name }}"
           EXT="${{ matrix.ext }}"
-          DIST_DIR="chunitools_${OS}"
-          mkdir -p "${DIST_DIR}"
-          cp "dist/chunitools${EXT}" "${DIST_DIR}/"
+          mkdir -p "${ARCHIVE}"
+          cp "dist/chunitools${EXT}" "${ARCHIVE}/"
           if [ -d "dist/vgmstream" ]; then
-            cp -r "dist/vgmstream" "${DIST_DIR}/"
+            cp -r "dist/vgmstream" "${ARCHIVE}/"
           fi
-          echo "Files in ${DIST_DIR}:"
-          ls -la "${DIST_DIR}/"
+          echo "Files in ${ARCHIVE}:"
+          ls -la "${ARCHIVE}/"
 
       - name: Create archive
         shell: bash
         run: |
-          OS="${{ matrix.os_label }}"
+          ARCHIVE="${{ matrix.archive_name }}"
           FMT="${{ matrix.archive_fmt }}"
           if [ "$FMT" = "zip" ]; then
-            7z a "chunitools_${OS}.zip" "chunitools_${OS}/" 2>/dev/null || \
-              zip -r "chunitools_${OS}.zip" "chunitools_${OS}/"
+            7z a "${ARCHIVE}.zip" "${ARCHIVE}/" 2>/dev/null || \
+              zip -r "${ARCHIVE}.zip" "${ARCHIVE}/"
           else
-            tar czf "chunitools_${OS}.tar.gz" "chunitools_${OS}/"
+            tar czf "${ARCHIVE}.tar.gz" "${ARCHIVE}/"
           fi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chunitools-${{ matrix.os_label }}
-          path: chunitools_${{ matrix.os_label }}.*
-          if-no-files-found: warn
+          name: ${{ matrix.archive_name }}
+          path: ${{ matrix.archive_name }}.*
+          if-no-files-found: error
 
   release:
     needs: [build]
@@ -104,7 +114,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: chunitools-*
+          pattern: chunitools_*
           merge-multiple: true
 
       - name: List artifacts
@@ -118,5 +128,6 @@ jobs:
           generate_release_notes: true
           files: |
             chunitools_linux.tar.gz
-            chunitools_macos.tar.gz
+            chunitools_macos_x86_64.tar.gz
+            chunitools_macos_arm64.tar.gz
             chunitools_windows.zip
