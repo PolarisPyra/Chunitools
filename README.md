@@ -32,7 +32,7 @@ uv run python build.py
 
 # The archive lands in builds/
 #   builds/chunitools_linux.tar.gz
-#   builds/chunitools_macos.tar.gz
+#   builds/chunitools_macos_apple_silicon.tar.gz
 #   builds/chunitools_windows.zip
 ```
 
@@ -54,15 +54,15 @@ Pushing a tag triggers CI to build for all platforms and uploads to GitHub Relea
 # 1. Make sure everything is committed
 git status
 
-# 2. Tag the release (SemVer: bump MINOR for breaking API changes, PATCH for fixes)
-git tag v0.5.0
+# 2. Tag the release (pre-release / alpha / stable as appropriate)
+git tag v1.0.0-alpha.1
 
 # 3. Push the tag
-git push origin v0.5.0
+git push origin v1.0.0-alpha.1
 
 # That's it — the Release workflow at .github/workflows/release.yml
-# will build for Linux, macOS, and Windows, then create a GitHub Release
-# with the compiled binaries attached.
+# will build for Linux, macOS (Apple Silicon), and Windows, then create
+# a GitHub Release with the compiled binaries attached.
 ```
 
 ### CI / CD workflow
@@ -71,7 +71,7 @@ git push origin v0.5.0
 |---|---|
 | Push to `main` | `ci.yml` — lint, typecheck, build, test |
 | Pull request to `main` | `ci.yml` — same checks |
-| Tag push `v*.*.*` | `release.yml` — build all platforms, upload to Release |
+| Tag push `v*.*.*` or `v*.*.*-*` | `release.yml` — build all platforms, upload to Release |
 
 ### Notes
 
