@@ -146,7 +146,7 @@ def format_notes_summary(notes: list[Note], chart: Chart | None = None, grouped:
 
     flat = _flatten_notes(notes)
 
-    html = '<div style="font-family:monospace;font-size:12px;line-height:1.6;">'
+    html = '<div style="font-family:monospace;font-size:12px;">'
     html += f'<span style="color:#ffffff;font-size:13px;font-weight:bold;">' \
             f'SELECTED NOTES: {len(flat)}</span>'
 
@@ -157,13 +157,13 @@ def format_notes_summary(notes: list[Note], chart: Chart | None = None, grouped:
         )
         html += f'  <span style="color:#888;">/ {chart_total} total</span>'
 
-    html += '<br><br>'
+    html += '<br>'
 
     if chart:
         if grouped:
             html += _format_grouped(flat, chart)
         else:
-            html += _format_chronological(flat, chart)
+            html += _format_timeline(flat, chart)
     else:
         counts: dict[NoteType, int] = {}
         for n in notes:
@@ -177,7 +177,7 @@ def format_notes_summary(notes: list[Note], chart: Chart | None = None, grouped:
 
 
 def _format_grouped(notes: list[Note], chart: Chart) -> str:
-    html = ""
+    html = "<br>"
     notes_by_type: dict[NoteType, list[Note]] = {}
     for note in notes:
         notes_by_type.setdefault(note.note_type, []).append(note)
@@ -205,26 +205,89 @@ def _format_grouped(notes: list[Note], chart: Chart) -> str:
     return html
 
 
-def _format_chronological(notes: list[Note], chart: Chart) -> str:
+def _format_timeline(notes: list[Note], chart: Chart) -> str:
+    """Render notes as Scratch-like colored blocks in chronological order."""
     sorted_notes = sorted(notes, key=lambda n: (n.measure, n.offset, n.cell, n.width))
-    # Unified base columns: TYPE MS OFF CEL WID
-    header_parts = ["TYPE", "MS", "OFF", "CEL", "WID"]
-    base_count = 5
-    col_widths = [5, 3, 4, 3, 3]
-    html = _render_table_header(header_parts, col_widths)
-    html += _render_table_separator(col_widths)
-    for note in sorted_notes:
+
+    html = '<table width="100%" cellspacing="0" cellpadding="0" style="font-family:monospace;font-size:12px;margin-top:4px;">'
+
+    for i, note in enumerate(sorted_notes):
+        color = _NOTE_COLORS.get(note.note_type, "#888888")
+        label = note.note_type.value
+
+        # Build detail fields
+        details = [
+            f'{note.measure}:{note.offset}',
+            f'L{note.cell}{"-" + str(note.cell + note.width - 1) if note.width > 1 else ""}',
+        ]
+
+        duration = getattr(note, "duration", 0)
+        if duration > 0:
+            details.append(f'dur#{duration}')
+
+        end_cell = getattr(note, "end_cell", None)
+        if end_cell is not None:
+            details.append(f'\u2192{end_cell}')
+
+        # Determine type display name
+        display_map = {
+            NoteType.TAP: "TAP",
+            NoteType.CHR: "EX",
+            NoteType.FLK: "FLICK",
+            NoteType.MNE: "MINE",
+            NoteType.HLD: "HOLD",
+            NoteType.HXD: "EX HOLD",
+            NoteType.SLD: "SLIDE",
+            NoteType.SLC: "CTRL",
+            NoteType.SXD: "EX SLIDE",
+            NoteType.SXC: "EX CTRL",
+            NoteType.AIR: "AIR",
+            NoteType.AUR: "AIR/R",
+            NoteType.AUL: "AIR/L",
+            NoteType.ADW: "AIR DW",
+            NoteType.ADR: "AIR DR",
+            NoteType.ADL: "AIR DL",
+            NoteType.AHD: "A HOLD",
+            NoteType.AHX: "A ACT",
+            NoteType.ALD: "A TRACE",
+            NoteType.ASD: "A SLIDE",
+            NoteType.ASC: "A CTRL",
+            NoteType.ASO: "SOLID",
+            NoteType.HHD: "HEAVEN",
+            NoteType.HHX: "H ACT",
+        }
+        display = display_map.get(note.note_type, label)
+
+        # Connector row between blocks
+        if i > 0:
+            html += (
+                '<tr><td style="padding:0 0 0 16px;line-height:1;">'
+                '<span style="color:#555;font-size:10px;">\u2502</span>'
+                '</td></tr>'
+            )
+
+        sep = " \u00b7 "
+        details_html = sep.join(escape(d) for d in details)
+
+        # Extra fields if any
         raw = chart.find_note_line(note)
         parts = raw.split()
-        cells = [escape(parts[0])]
-        for p, w in zip(parts[1:base_count], col_widths[1:], strict=False):
-            cells.append(f'{"&nbsp;" * (w - len(p))}{escape(p)}')
-        if len(parts) > base_count:
-            extra = " ".join(parts[base_count:])
-            cells.append(f"  <span style='color:#666;'>{escape(extra)}</span>")
-        color = _NOTE_COLORS.get(note.note_type, "#ffffff")
-        html += f'<span style="color:{color};">' + "&nbsp;".join(cells) + "</span><br>"
-    html += "<br>"
+        extras_html = ""
+        if len(parts) > 5:
+            extras = " ".join(parts[5:])
+            extras_html = f'<br><span style="color:#999;font-size:10px;">{escape(extras)}</span>'
+
+        # Block row
+        html += (
+            f'<tr><td style="background:{color}1a;border-left:3px solid {color};'
+            f'border-radius:4px;padding:10px 16px;">'
+            f'<span style="color:{color};font-weight:bold;font-size:13px;">{escape(display)}</span>'
+            f'&nbsp; <span style="color:#ddd;font-size:12px;">{details_html}</span>'
+            f'{extras_html}'
+            '</td></tr>'
+        )
+
+    html += '</table>'
     return html
 
 

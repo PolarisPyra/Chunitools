@@ -351,10 +351,10 @@ class MainWindow(QMainWindow):
         self.group_btn.setChecked(True)
         self.group_btn.clicked.connect(lambda: self._set_inspector_grouping(True))
         header_row.addWidget(self.group_btn)
-        self.chrono_btn = QPushButton("Chrono")
+        self.chrono_btn = QPushButton("Timeline")
         self.chrono_btn.setFixedHeight(24)
         self.chrono_btn.setFixedWidth(78)
-        self.chrono_btn.setToolTip("Sort notes chronologically")
+        self.chrono_btn.setToolTip("Show notes as a timeline of colored blocks")
         self.chrono_btn.setCheckable(True)
         self.chrono_btn.clicked.connect(lambda: self._set_inspector_grouping(False))
         header_row.addWidget(self.chrono_btn)
@@ -477,6 +477,20 @@ class MainWindow(QMainWindow):
         self.measure_edit.returnPressed.connect(self._commit_measure_edit)
         layout.addWidget(self.measure_edit)
 
+        # ── Open chart location ──
+        self.btn_open_location = QPushButton()
+        self.btn_open_location.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_open_location.setStyleSheet(btn_style)
+        self.btn_open_location.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_open_location.setToolTip("Open chart file location")
+        if self._qta:
+            self.btn_open_location.setIcon(self._qta.icon("fa5s.external-link-alt", color=theme.WHITE))
+            self.btn_open_location.setIconSize(QSize(14, 14))
+        else:
+            self.btn_open_location.setText("\u2197")
+        self.btn_open_location.clicked.connect(self._open_chart_location)
+        layout.addWidget(self.btn_open_location)
+
         parent_layout.addWidget(bar)
         self._timeline_toolbar = bar
 
@@ -486,6 +500,14 @@ class MainWindow(QMainWindow):
         self.measure_edit.show()
         self.measure_edit.setFocus()
         self.measure_edit.selectAll()
+
+    def _open_chart_location(self) -> None:
+        path = self.current_file_path
+        if not path:
+            self.statusBar().showMessage("No chart file is loaded.", 2000)
+            return
+        url = QUrl.fromLocalFile(str(Path(path).parent))
+        QDesktopServices.openUrl(url)
 
     def _commit_measure_edit(self) -> None:
         try:
@@ -714,7 +736,7 @@ class MainWindow(QMainWindow):
             chart_name = f"{title} — {diff} {level}".strip()
         else:
             chart_name = "Note Inspector Export"
-        mode_tag = "grouped" if self._inspector_grouped else "chrono"
+        mode_tag = "grouped" if self._inspector_grouped else "timeline"
         default_name = (
             f"{Path(self.current_file_path).stem}_notes_{mode_tag}.md"
             if self.current_file_path
