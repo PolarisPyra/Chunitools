@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
+
+NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
@@ -463,7 +466,7 @@ class AirRendererMixin(RendererMixinSupport):
 
         if is_crush:
             self._draw_air_crush_elements(painter, note, current_position, timeline)
-        elif note.note_type in (NoteType.AHD, NoteType.ASD, NoteType.ASC, NoteType.ASX):
+        elif note.note_type in (NoteType.ALD, NoteType.AHD, NoteType.AHX, NoteType.ASD, NoteType.ASC, NoteType.ASX):
             self._draw_air_end_bar(painter, note, current_position, timeline)
         elif is_action:
             self._draw_air_joint_bar(painter, note, current_position, timeline)
@@ -584,13 +587,18 @@ class AirRendererMixin(RendererMixinSupport):
         current_position: float,
         timeline: Any,
     ) -> None:
-        self._draw_air_bar_at(
-            getattr(note, "end_cell", note.cell),
-            getattr(note, "end_width", note.width),
-            timeline.note_abs_end_pos(note),
-            painter,
-            current_position,
-        )
+        anchor = timeline.note_anchor(note)
+        if anchor is not None:
+            cell = getattr(anchor, "end_cell", anchor.cell)
+            width = getattr(anchor, "end_width", anchor.width)
+            abs_pos = timeline.note_abs_end_pos(note)
+        else:
+            cell = getattr(note, "end_cell", note.cell)
+            width = getattr(note, "end_width", note.width)
+            abs_pos = timeline.note_abs_end_pos(note)
+        NOTE_DEBUG.debug("  air_end_bar: %s cell=%s w=%s pos=%.4f",
+                         note.note_type.value, cell, width, abs_pos)
+        self._draw_air_bar_at(cell, width, abs_pos, painter, current_position)
 
     def _draw_air_slide_step_bars(
         self,
@@ -605,6 +613,9 @@ class AirRendererMixin(RendererMixinSupport):
             abs_pos += step.duration / timeline.resolution
             if not self._air_slide_step_draws_bar(index, step_count, step):
                 continue
+            NOTE_DEBUG.debug("  air_step_bar: step=%d/%d %s cell=%s w=%s pos=%.4f",
+                             index, step_count, step.note_type.value,
+                             step.end_cell, step.end_width, abs_pos)
             self._draw_air_bar_at(
                 step.end_cell,
                 step.end_width,

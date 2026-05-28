@@ -346,6 +346,10 @@ class BaseRenderer(
         ):
             render_tasks.append(RenderTask(20, self._draw_air_slide_background, note, tick))
             render_tasks.append(RenderTask(35, self._draw_air_action_bar, note, tick))
+            # If wrapper resolves to a ground note type, dispatch its foreground
+            resolved = self._resolve_air_wrapped_foreground(note)
+            if resolved is not None:
+                render_tasks.append(RenderTask(38, resolved, note, tick))
 
         elif note_type == NoteType.ALD:
             render_tasks.append(RenderTask(20, self._draw_crash_slide_background, note, tick))
@@ -358,10 +362,9 @@ class BaseRenderer(
                 render_tasks.append(RenderTask(35, self._draw_air_action_bar, note, tick))
 
         elif note_type in AIR_ARROW_NOTES:
-            # Draw anchored air visuals behind slide/hold foreground heads
-            # so the target note end remains visible when air overlaps it.
-            render_tasks.append(RenderTask(25, self._draw_air_step_for_air, note, tick))
-            render_tasks.append(RenderTask(26, self._draw_air, note, tick))
+            # Air arrows render in the air foreground layer above all ground notes.
+            render_tasks.append(RenderTask(38, self._draw_air_step_for_air, note, tick))
+            render_tasks.append(RenderTask(55, self._draw_air, note, tick))
 
     def _dispatch_foreground_tasks(
         self, render_tasks: list[RenderTask], note: Any, note_type: NoteType, tick: int
@@ -391,6 +394,31 @@ class BaseRenderer(
             render_tasks.append(RenderTask(40, self._draw_flick, note, tick))
         elif note_type in (NoteType.HHD, NoteType.HHX):
             render_tasks.append(RenderTask(40, self._draw_heaven_hold_foreground, note, tick))
+
+    def _resolve_air_wrapped_foreground(
+        self, note: Any
+    ) -> Any | None:
+        """Resolve ASC/ASD wrapper to a foreground draw function for the wrapped type.
+
+        When ASC/ASD wraps a ground note (TAP, CHR, HLD, SLD, FLK), the foreground
+        head should match the wrapped type, not air.
+        """
+        if not hasattr(note, "target_note"):
+            return None
+        wrapped: str = note.target_note
+        if not isinstance(wrapped, str):
+            return None
+        if wrapped == "TAP":
+            return lambda p, n, c, t, __self=self: __self._draw_tap(
+                p, n, c, t, __self.colors.tap
+            )
+        if wrapped == "CHR":
+            return lambda p, n, c, t, __self=self: __self._draw_tap(
+                p, n, c, t, __self.colors.ex_tap
+            )
+        if wrapped == "FLK":
+            return self._draw_flick
+        return None
 
     # --- Core Note Drawing ---
 
@@ -469,6 +497,16 @@ class BaseRenderer(
             cp2 = QPointF(p2.x() - (p3.x() - p1.x()) / 6.0, p2.y() - (p3.y() - p1.y()) / 6.0)
             path.cubicTo(cp1, cp2, p2)
 
+        return path
+
+    def _build_polyline_path(self, points: list[QPointF]) -> QPainterPath:
+        """Build a straight polyline path through control points."""
+        path = QPainterPath()
+        if not points:
+            return path
+        path.moveTo(points[0])
+        for point in points[1:]:
+            path.lineTo(point)
         return path
 
     def _append_path_segments(self, target: QPainterPath, source: QPainterPath) -> None:
