@@ -57,51 +57,9 @@ jobs:
           path: chunitools_macos_arm64.tar.gz
           if-no-files-found: error
 
-  build-macos-x86_64:
-    name: macOS Intel
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install universal2 Python from python.org
-        run: |
-          curl -sL -o /tmp/python.pkg "https://www.python.org/ftp/python/3.13.13/python-3.13.13-macos11.pkg"
-          sudo installer -pkg /tmp/python.pkg -target /
-          rm /tmp/python.pkg
-          PY_BIN="/Library/Frameworks/Python.framework/Versions/3.13/bin"
-          echo "$PY_BIN" >> "$GITHUB_PATH"
-
-      - name: Verify Python runs under x86_64
-        run: |
-          arch -x86_64 python3 -c "import platform; print('arch:', platform.machine())"
-
-      - run: brew install libxml2 2>/dev/null || true
-
-      - name: Create x86_64 venv and install deps (pip)
-        run: |
-          arch -x86_64 python3 -m venv venv_x86
-          source venv_x86/bin/activate
-          pip install --upgrade pip
-          pip install pyinstaller PySide6 Pillow qtawesome pyflac platformdirs PyCriCodecsEx
-
-      - run: python3 scripts/download_vgmstream.py macos
-
-      - name: Build with PyInstaller (x86_64)
-        run: |
-          source venv_x86/bin/activate
-          arch -x86_64 python3 -m PyInstaller --noconfirm chunitools.spec
-
-      - run: |
-          mkdir -p chunitools_macos_x86_64
-          cp dist/chunitools chunitools_macos_x86_64/
-          tar czf chunitools_macos_x86_64.tar.gz chunitools_macos_x86_64/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: chunitools_macos_x86_64
-          path: chunitools_macos_x86_64.tar.gz
-          if-no-files-found: error
+  # macOS Intel build is temporarily disabled due to GitHub API rate limits
+  # when multiple macOS jobs hit the vgmstream release API simultaneously.
+  # To re-enable, pass GITHUB_TOKEN to _latest_tag() or pin --tag r2117.
 
   build-windows:
     name: Windows
@@ -126,7 +84,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [build-linux, build-macos-arm64, build-macos-x86_64, build-windows]
+    needs: [build-linux, build-macos-arm64, build-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -143,6 +101,5 @@ jobs:
           generate_release_notes: true
           files: |
             chunitools_linux.tar.gz
-            chunitools_macos_x86_64.tar.gz
             chunitools_macos_arm64.tar.gz
             chunitools_windows.zip

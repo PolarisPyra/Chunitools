@@ -63,6 +63,7 @@ ignore = [
 "src/config.py" = ["PLR0911"]
 "src/ui/window/window.py" = ["PLR0915"]
 "tests/*" = ["PLR0913", "PLR0914", "PLR0915", "TCH", "PLC0415"]
+"scripts/*" = ["PLC0415"]
 "build.py" = ["PLC0415"]
 
 [tool.ruff.lint.isort]

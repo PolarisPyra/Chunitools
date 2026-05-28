@@ -43,9 +43,20 @@ VENDOR_DIR = ROOT / "vendor" / "vgmstream"
 
 
 def _latest_tag(accept: str = "application/vnd.github+json") -> str:
-    """Return the tag name of the latest vgmstream release."""
+    """Return the tag name of the latest vgmstream release.
+
+    Uses ``GITHUB_TOKEN`` from the environment when available (CI) to
+    avoid GitHub API rate limits.
+    """
+    import os  # noqa: PLC0415
+    from urllib.request import Request  # noqa: PLC0415
+
     url = f"{GITHUB_API}/latest"
-    req = urlopen(url)  # noqa: S310
+    headers = {"Accept": accept}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urlopen(Request(url, headers=headers))  # noqa: S310
     data = json.loads(req.read().decode())
     return data["tag_name"]
 
