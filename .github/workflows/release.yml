@@ -22,13 +22,18 @@ jobs:
             ext: ""
             archive_fmt: tar.gz
             archive_name: chunitools_linux
-          - os: macos-latest
+          - os: macos-13
             os_label: macos
-            label: macOS
+            label: macOS Intel
             ext: ""
             archive_fmt: tar.gz
-            archive_name: chunitools_macos
-            fat_binary: true
+            archive_name: chunitools_macos_x86_64
+          - os: macos-latest
+            os_label: macos
+            label: macOS Apple Silicon
+            ext: ""
+            archive_fmt: tar.gz
+            archive_name: chunitools_macos_arm64
           - os: windows-latest
             os_label: windows
             label: Windows
@@ -66,22 +71,6 @@ jobs:
 
       - name: Build with PyInstaller
         run: uv run pyinstaller --noconfirm chunitools.spec
-
-      - name: Build x86_64 slice and create universal binary (macOS only)
-        if: matrix.fat_binary
-        shell: bash
-        run: |
-          set -e
-          mkdir -p dist_x86
-          arch -x86_64 uv run pyinstaller --noconfirm --distpath dist_x86 chunitools.spec
-          if [ -f "dist/chunitools" ] && [ -f "dist_x86/chunitools" ]; then
-            file dist/chunitools
-            file dist_x86/chunitools
-            lipo -create -output chunitools_universal dist/chunitools dist_x86/chunitools
-            mv chunitools_universal dist/chunitools
-            file dist/chunitools
-          fi
-          rm -rf dist_x86
 
       - name: Prepare archive
         shell: bash
@@ -139,5 +128,6 @@ jobs:
           generate_release_notes: true
           files: |
             chunitools_linux.tar.gz
-            chunitools_macos.tar.gz
+            chunitools_macos_x86_64.tar.gz
+            chunitools_macos_arm64.tar.gz
             chunitools_windows.zip
