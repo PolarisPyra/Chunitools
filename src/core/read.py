@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import contextlib
 import logging
-
-NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 import re
 import xml.etree.ElementTree as ET
 from abc import ABC, abstractmethod
@@ -18,6 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 
 logger = logging.getLogger("chartloading")
+NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 
 from src.core.const import Command, NoteType
 from src.core.editor_metadata import load_editor_metadata
@@ -110,7 +109,7 @@ def _node_int(parent: ET.Element, path: str, default: int = 0) -> int:
 
 
 def _parse_note(note_type: NoteType, args: list[str]) -> Note | None:  # noqa: PLR0911, PLR0912
-    """Dispatch note parsing exactly as implemented in nai-rs."""
+    """Dispatch C2S note parsing through the note schema."""
     return parse_note(note_type, args)
 
 
@@ -135,15 +134,64 @@ class C2sParser(IChartParser):
       3. Air-note anchor resolution
     """
 
+    HEADER_TAGS: frozenset[str] = frozenset(
+        {
+            Command.MUSICID.value,
+            Command.TITLE.value,
+            Command.ARTIST.value,
+            Command.VERSION.value,
+            Command.VERS.value,
+            Command.MUSIC.value,
+            Command.SEQUENCEID.value,
+            Command.DIFFICULT.value,
+            Command.LEVEL.value,
+            Command.CREATOR.value,
+            Command.RESOLUTION.value,
+            Command.CLK_DEF.value,
+            Command.PROGJUDGE_BPM.value,
+            Command.PROGJUDGE_AER.value,
+            Command.TUTORIAL.value,
+            Command.WENAME.value,
+            Command.WELEVEL.value,
+            Command.BPM_DEF.value,
+            Command.MET_DEF.value,
+            CUSTOM_AUDIO_COMMAND,
+        }
+    )
+    TIMING_TAGS: frozenset[str] = frozenset(
+        {
+            Command.BPM.value,
+            Command.MET.value,
+            *_SYSTEM_CMD_VALUES,
+        }
+    )
+    METADATA_MAP: dict[str, str] = {
+        Command.MUSICID.value: "music_id",
+        Command.TITLE.value: "title",
+        Command.ARTIST.value: "artist",
+        Command.VERSION.value: "version",
+        Command.VERS.value: "version",
+        Command.MUSIC.value: "music_id",
+        Command.SEQUENCEID.value: "sequence_id",
+        Command.DIFFICULT.value: "difficulty",
+        Command.LEVEL.value: "level",
+        Command.CREATOR.value: "creator",
+        Command.RESOLUTION.value: "resolution",
+        Command.CLK_DEF.value: "clk_def",
+        Command.PROGJUDGE_BPM.value: "progjudge_bpm",
+        Command.PROGJUDGE_AER.value: "progjudge_aer",
+        Command.TUTORIAL.value: "tutorial",
+        Command.WENAME.value: "we_name",
+        Command.WELEVEL.value: "we_level",
+    }
+
     def __init__(self) -> None:
         self._chart: Chart | None = None
         self._raw_notes: list[tuple[NoteType, tuple[str, ...]]] = []
-        self._seen_raw_notes: set[tuple[NoteType, tuple[str, ...]]] = set()
 
     def parse(self, content: str) -> Chart:
         self._chart = Chart()
         self._raw_notes.clear()
-        self._seen_raw_notes.clear()
         self._tokenize(content)
         self._pass1_parse_notes()
         self._pass2_join_slides()
@@ -176,60 +224,53 @@ class C2sParser(IChartParser):
             return self._get_tick(n) + dur
         return self._get_tick(n)
 
-    # -- Tokenization (Pass 0) -----------------------------------------------
+    # -- Line classification (Pass 0) ----------------------------------------
 
     def _tokenize(self, content: str) -> None:
-        metadata_map = {
-            Command.MUSICID.value: "music_id",
-            Command.TITLE.value: "title",
-            Command.ARTIST.value: "artist",
-            Command.VERSION.value: "version",
-            Command.VERS.value: "version",
-            Command.MUSIC.value: "music_id",
-            Command.SEQUENCEID.value: "sequence_id",
-            Command.DIFFICULT.value: "difficulty",
-            Command.LEVEL.value: "level",
-            Command.CREATOR.value: "creator",
-            Command.RESOLUTION.value: "resolution",
-            Command.CLK_DEF.value: "clk_def",
-            Command.PROGJUDGE_BPM.value: "progjudge_bpm",
-            Command.PROGJUDGE_AER.value: "progjudge_aer",
-            Command.TUTORIAL.value: "tutorial",
-            Command.WENAME.value: "we_name",
-            Command.WELEVEL.value: "we_level",
-        }
-
+        in_notes = False
         for raw_line in content.splitlines():
             line = raw_line.strip()
-            if not line or line.startswith("#"):
+            if not line or line.startswith(("#", "T_")):
                 continue
 
             parts = line.split("\t")
-            command_str, args = parts[0], parts[1:]
+            command_str, args = parts[0].upper(), parts[1:]
 
-            if command_str in metadata_map:
-                _handle_metadata_command(self._active_chart, command_str, args, metadata_map)
-            elif command_str == Command.BPM_DEF.value:
-                self._active_chart.metadata.bpm_def = args
-            elif command_str == Command.MET_DEF.value:
-                _handle_met_def_command(self._active_chart, args)
-            elif command_str == Command.BPM.value:
-                _handle_bpm_command(self._active_chart, args)
-            elif command_str == Command.MET.value:
-                _handle_met_command(self._active_chart, args)
-            elif command_str == CUSTOM_AUDIO_COMMAND and args:
-                self._active_chart.metadata.audio_path = " ".join(args).strip()
-            elif command_str in _SYSTEM_CMD_VALUES:
-                _handle_system_command(self._active_chart, command_str, args)
-            elif command_str in PARSER_NOTE_TYPE_VALUES:
-                try:
-                    nt = NoteType(command_str)
-                    raw_note = (nt, tuple(args))
-                    if raw_note not in self._seen_raw_notes:
-                        self._seen_raw_notes.add(raw_note)
-                        self._raw_notes.append(raw_note)
-                except ValueError:
-                    continue
+            if in_notes or command_str not in self.HEADER_TAGS | self.TIMING_TAGS:
+                in_notes = True
+                self._record_note(command_str, args)
+                continue
+
+            if command_str in self.HEADER_TAGS:
+                self._parse_header(command_str, args)
+            elif command_str in self.TIMING_TAGS:
+                self._parse_timing(command_str, args)
+                in_notes = False
+
+    def _parse_header(self, command_str: str, args: list[str]) -> None:
+        if command_str in self.METADATA_MAP:
+            _handle_metadata_command(self._active_chart, command_str, args, self.METADATA_MAP)
+        elif command_str == Command.BPM_DEF.value:
+            self._active_chart.metadata.bpm_def = args
+        elif command_str == Command.MET_DEF.value:
+            _handle_met_def_command(self._active_chart, args)
+        elif command_str == CUSTOM_AUDIO_COMMAND and args:
+            self._active_chart.metadata.audio_path = " ".join(args).strip()
+
+    def _parse_timing(self, command_str: str, args: list[str]) -> None:
+        if command_str == Command.BPM.value:
+            _handle_bpm_command(self._active_chart, args)
+        elif command_str == Command.MET.value:
+            _handle_met_command(self._active_chart, args)
+        elif command_str in _SYSTEM_CMD_VALUES:
+            _handle_system_command(self._active_chart, command_str, args)
+
+    def _record_note(self, command_str: str, args: list[str]) -> None:
+        if command_str not in PARSER_NOTE_TYPE_VALUES:
+            return
+        with contextlib.suppress(ValueError):
+            note_type = NoteType(command_str)
+            self._raw_notes.append((note_type, tuple(args)))
 
     # -- Pass 1: Initial note parsing -----------------------------------------
 
@@ -242,17 +283,8 @@ class C2sParser(IChartParser):
 
         _air_path_types = AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_CRUSH_NOTE_TYPES
 
-        # Deduplicate: some charts have identical lines that parse to the same note
-        _seen: set[tuple[str, ...]] = set()
-
-        _dedup_skipped = 0
         for nt, args_tuple in self._raw_notes:
             args = list(args_tuple)
-            dedup_key = args_tuple
-            if dedup_key in _seen:
-                _dedup_skipped += 1
-                continue
-            _seen.add(dedup_key)
 
             if nt in SLIDE_NOTE_TYPES:
                 note = _parse_note(nt, args)
@@ -272,19 +304,17 @@ class C2sParser(IChartParser):
                     else:
                         self._ground_notes.append(note)
 
-        NOTE_DEBUG.debug("parse: dedup_skipped=%d total_raw=%d slide_segs=%d air_segs=%d ground=%d",
-                         _dedup_skipped, len(self._raw_notes), len(self._slide_segments),
-                         len(self._air_slide_segments), len(self._ground_notes))
+        NOTE_DEBUG.debug(
+            "parse: total_raw=%d slide_segs=%d air_segs=%d ground=%d",
+            len(self._raw_notes),
+            len(self._slide_segments),
+            len(self._air_slide_segments),
+            len(self._ground_notes),
+        )
 
     # -- Pass 2: Slide-segment chaining ---------------------------------------
 
     def _pass2_join_slides(self) -> None:
-        self._target_note_families = {
-            NoteType.HLD: frozenset({NoteType.HLD, NoteType.HXD}),
-            NoteType.SLD: frozenset({NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}),
-            NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC}),
-            NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC}),
-        }
         self._used_slide_segments: set[SlideTo] = set()
         self._used_air_slide_segments: set[AirSlide] = set()
         self._joined_slides = self._join_slide_segments()
@@ -295,9 +325,55 @@ class C2sParser(IChartParser):
             required_type = NoteType(target_type)
         except ValueError:
             return False
-        return candidate.note_type in self._target_note_families.get(
-            required_type, frozenset({required_type})
+        return candidate.note_type == required_type
+
+    def _is_generalized_air(self, note: Note) -> bool:
+        return note.note_type in (
+            AIR_ARROW_NOTE_TYPES | AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_CRUSH_NOTE_TYPES
         )
+
+    def _is_legal_air_previous(self, note: Note) -> bool:
+        return (
+            not self._is_generalized_air(note)
+            and note.note_type != NoteType.MNE
+            and note.note_type.value != "CLICK"
+        )
+
+    def _filter_previous_candidates(self, note: Note, candidates: list[Note]) -> list[Note]:
+        filtered = [candidate for candidate in candidates if candidate is not note]
+        if note.note_type in SLIDE_NOTE_TYPES:
+            return [candidate for candidate in filtered if candidate.note_type in SLIDE_NOTE_TYPES]
+        if note.note_type in AIR_SLIDE_NOTE_TYPES:
+            air_slide = [
+                candidate for candidate in filtered if candidate.note_type in AIR_SLIDE_NOTE_TYPES
+            ]
+            other = [
+                candidate
+                for candidate in filtered
+                if candidate.note_type not in AIR_SLIDE_NOTE_TYPES
+                and self._is_legal_air_previous(candidate)
+            ]
+            return [*air_slide, *other]
+        if note.note_type in (AIR_ARROW_NOTE_TYPES | AIR_HOLD_NOTE_TYPES):
+            return [candidate for candidate in filtered if self._is_legal_air_previous(candidate)]
+        return filtered
+
+    def _select_previous_candidate(
+        self,
+        note: Note,
+        candidates: list[Note],
+        target_type: str,
+    ) -> Note | None:
+        filtered = self._filter_previous_candidates(note, candidates)
+        if target_type and target_type != "DEF":
+            target_filtered = [
+                candidate for candidate in filtered if self._matches_target_note(candidate, target_type)
+            ]
+            if target_filtered:
+                return target_filtered[0]
+        if filtered:
+            return filtered[0]
+        return None
 
     def _join_slide_segments(self) -> list[Slide]:
         self._slide_segments.sort(key=lambda s: (self._get_tick(s), s.cell, s.width))
@@ -466,16 +542,8 @@ class C2sParser(IChartParser):
             tick = self._get_tick(note)
             k = (tick, note.cell, note.width)
             candidates = anchor_lookup.get(k, [])
-            anchor = None
             target_type = getattr(note, "target_note", "DEF")
-            if target_type == "DEF":
-                if candidates:
-                    anchor = candidates[0]
-            else:
-                for cand in candidates:
-                    if self._matches_target_note(cand, target_type):
-                        anchor = cand
-                        break
+            anchor = self._select_previous_candidate(note, candidates, target_type)
             if anchor:
                 note_obj = replace(note, parent=anchor)
             else:
@@ -487,17 +555,8 @@ class C2sParser(IChartParser):
             tick = self._get_tick(seg)
             k = (tick, seg.cell, seg.width)
             candidates = anchor_lookup.get(k, [])
-            anchor = None
             target_type = seg.target_note
-            if target_type == "DEF":
-                filtered = [c for c in candidates if c is not seg]
-                if filtered:
-                    anchor = filtered[0]
-            else:
-                for cand in candidates:
-                    if cand is not seg and self._matches_target_note(cand, target_type):
-                        anchor = cand
-                        break
+            anchor = self._select_previous_candidate(seg, candidates, target_type)
             if anchor:
                 seg_obj = replace(seg, parent=anchor)
             else:
@@ -518,16 +577,8 @@ class C2sParser(IChartParser):
             tick = self._get_tick(note)
             k = (tick, note.cell, note.width)
             candidates = anchor_lookup.get(k, [])
-            anchor = None
             target_type = getattr(note, "target_note", "DEF")
-            if target_type == "DEF":
-                if candidates:
-                    anchor = candidates[0]
-            else:
-                for cand in candidates:
-                    if self._matches_target_note(cand, target_type):
-                        anchor = cand
-                        break
+            anchor = self._select_previous_candidate(note, candidates, target_type)
             if anchor:
                 note = replace(note, parent=anchor)
             final_notes.append(note)
@@ -632,17 +683,6 @@ def _handle_met_command(chart: Chart, args: list[str]) -> None:
         chart.signatures.append({"measure": measure, "numerator": num, "denominator": den})
     except (ValueError, TypeError):
         pass
-
-
-def _handle_note_command(chart: Chart, command_str: str, args: list[str]) -> None:
-    try:
-        note_type_enum = NoteType(command_str)
-    except ValueError:
-        return
-
-    note = _parse_note(note_type_enum, args)
-    if note is not None:
-        chart.notes.append(note)
 
 
 def _handle_system_command(chart: Chart, command_str: str, args: list[str]) -> None:

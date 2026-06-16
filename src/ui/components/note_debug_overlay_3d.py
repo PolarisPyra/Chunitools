@@ -15,7 +15,11 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from src.ui.components.play_view import DRAW_DEPTH_MAX, DRAW_DEPTH_MIN, _note_screen_span
+from src.ui.components.util.play_view_geometry import (
+    DRAW_DEPTH_MAX,
+    DRAW_DEPTH_MIN,
+    _note_screen_span,
+)
 from src.ui.theme import notes as note_theme
 
 if TYPE_CHECKING:
