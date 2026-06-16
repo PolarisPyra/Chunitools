@@ -1,4 +1,4 @@
-## Project: chunitools v0.2.11
+## Project: chunitools v0.2.12
 
 A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and editor built with Python 3.10+ and PySide6 (Qt6).
 
@@ -195,7 +195,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 
 ### Versioning
 
-- **Always use SemVer** (semver.org). Current: 0.2.11. For 0.x, bump MINOR for breaking internal API changes, PATCH for bugfixes/refactors that don't change public interfaces. Tag every release with `v<VERSION>` (e.g., `v0.2.11`) and push tags to origin. Commit version bumps separately as `v<VERSION>`.
+- **Always use SemVer** (semver.org). Current: 0.2.12. For 0.x, bump MINOR for breaking internal API changes, PATCH for bugfixes/refactors that don't change public interfaces. Tag every release with `v<VERSION>` (e.g., `v0.2.12`) and push tags to origin. Commit version bumps separately as `v<VERSION>`.
 
 ## Rules
 
