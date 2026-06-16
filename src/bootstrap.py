@@ -17,6 +17,7 @@ BOOTSTRAP_ONLY_ENV = "CHUNITOOLS_BOOTSTRAP_ONLY"
 BOOTSTRAP_ONLY_VALUE = "1"
 LOGS_DIR_NAME = "logs"
 LOG_FILE_NAME = "debug.log"
+LEGACY_NOTE_LOG_PATTERN = "note_rendering_debug_*.log"
 
 
 def create_application(argv: list[str] | None = None) -> QApplication:
@@ -27,10 +28,14 @@ def create_application(argv: list[str] | None = None) -> QApplication:
 def _configure_logging() -> None:
     log_dir = USER_CONFIG_DIR / LOGS_DIR_NAME
     log_dir.mkdir(parents=True, exist_ok=True)
+    for legacy_log in log_dir.glob(LEGACY_NOTE_LOG_PATTERN):
+        legacy_log.unlink(missing_ok=True)
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.WARNING)
-    root_logger.handlers.clear()
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+        handler.close()
 
     formatter = logging.Formatter(
         "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
@@ -52,6 +57,9 @@ def _configure_logging() -> None:
         handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
         handler.setLevel(logging.DEBUG)
         logger = logging.getLogger(logger_name)
+        for existing_handler in list(logger.handlers):
+            logger.removeHandler(existing_handler)
+            existing_handler.close()
         logger.setLevel(logging.DEBUG)
         logger.addHandler(handler)
         logger.propagate = False

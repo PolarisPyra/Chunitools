@@ -53,6 +53,136 @@ class PlayViewSupportNotesMixin:
             return QColor(TRACE_COLORS.get(color_code, "#b4b4c8"))
 
         return get_note_color(note.note_type)
+
+    def _draw_note(  # noqa: PLR0913
+        self,
+        painter: QPainter,
+        note: Note,
+        x: float,
+        y: float,
+        w: float,
+        scale: float,
+        alpha: int,
+        judge_time: float,
+        depth: float,
+        end_depth: float,
+        vanish_x: float,
+        vanish_y: float,
+        judge_y: float,
+    ) -> None:
+        color = self._get_note_color(note)
+        note_type = note.note_type
+
+        if note_type == NoteType.TAP:
+            self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, depth)
+        elif note_type == NoteType.CHR:
+            self._draw_extap_quad(painter, x, y, w, scale, color, alpha, note, depth)
+        elif note_type == NoteType.MNE:
+            self._draw_mine(painter, x, y, w, scale, color, alpha)
+        elif note_type == NoteType.FLK:
+            self._draw_flick(painter, x, y, w, scale, color, alpha, note, depth)
+        elif note_type in {NoteType.HLD, NoteType.HXD}:
+            self._draw_hold(
+                painter,
+                note,
+                x,
+                y,
+                w,
+                scale,
+                color,
+                alpha,
+                judge_time,
+                depth,
+                end_depth,
+                vanish_x,
+                vanish_y,
+                judge_y,
+            )
+        elif note_type in {NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC}:
+            self._draw_slide(
+                painter,
+                note,
+                x,
+                y,
+                w,
+                scale,
+                color,
+                alpha,
+                judge_time,
+                depth,
+                end_depth,
+                vanish_x,
+                vanish_y,
+                judge_y,
+            )
+        elif note_type in {NoteType.AIR, NoteType.AUR, NoteType.AUL, NoteType.ADW, NoteType.ADR, NoteType.ADL}:
+            self._draw_or_defer_air_arrow(
+                painter,
+                note,
+                x,
+                y,
+                w,
+                scale,
+                alpha,
+                note_type,
+                depth,
+                vanish_x,
+                vanish_y,
+                judge_y,
+            )
+        elif note_type in {NoteType.AHD, NoteType.AHX}:
+            self._draw_air_hold_segment(
+                painter,
+                note,
+                x,
+                y,
+                w,
+                scale,
+                color,
+                alpha,
+                judge_time,
+                depth,
+                end_depth,
+                vanish_x,
+                vanish_y,
+                judge_y,
+                note_type == NoteType.AHD,
+            )
+        elif note_type in {NoteType.ASD, NoteType.ASC}:
+            self._draw_air_slide(
+                painter,
+                note,
+                x,
+                y,
+                w,
+                scale,
+                color,
+                alpha,
+                judge_time,
+                depth,
+                end_depth,
+                vanish_x,
+                vanish_y,
+                judge_y,
+            )
+        elif note_type == NoteType.ALD:
+            self._draw_air_trace(
+                painter,
+                note,
+                x,
+                y,
+                w,
+                scale,
+                color,
+                alpha,
+                judge_time,
+                depth,
+                end_depth,
+                vanish_x,
+                vanish_y,
+                judge_y,
+            )
+
     def _draw_notes(self, painter: QPainter, judge_time: float) -> None:  # noqa: PLR0912
         w, h = self.width(), self.height()
         vanish_x = w / 2.0

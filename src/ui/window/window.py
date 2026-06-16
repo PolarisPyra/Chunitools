@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -69,6 +68,7 @@ from src.workspace.menubar import MenuCursorFilter, create_menu_bar
 LOGGER = logging.getLogger(__name__)
 
 _LOGS_DIR_NAME = "logs"
+_NOTE_RENDERING_DEBUG_LOG_NAME = "note_rendering_debug.log"
 
 
 def _setup_note_rendering_debug_log(
@@ -84,17 +84,13 @@ def _setup_note_rendering_debug_log(
     log_dir = USER_CONFIG_DIR / _LOGS_DIR_NAME
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_title = "".join(c if c.isalnum() or c in "_-" else "_" for c in chart_title).strip("_")
-    safe_music_id = "".join(c for c in chart_music_id if c.isalnum() or c in "_-")
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    log_filename = f"note_rendering_debug_{timestamp}_{safe_title}_{safe_music_id}.log"
-
     logger = logging.getLogger("note_rendering_debug")
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
+        handler.close()
 
     handler = logging.FileHandler(
-        log_dir / log_filename, mode="w", encoding="utf-8"
+        log_dir / _NOTE_RENDERING_DEBUG_LOG_NAME, mode="w", encoding="utf-8"
     )
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     handler.setLevel(logging.DEBUG)
