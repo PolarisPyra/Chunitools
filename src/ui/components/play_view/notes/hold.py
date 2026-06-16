@@ -59,7 +59,11 @@ class PlayViewHoldNotesMixin:
 
         if _depth_in_draw_range(depth):
             self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, draw_depth)
-        if _depth_in_draw_range(draw_end_depth):
+        end_tick = self.chart.timeline.note_end_tick(note) if self.chart else 0
+        if (
+            _depth_in_draw_range(draw_end_depth)
+            and not self._air_replaces_endpoint(note, end_tick, note.cell, note.width)
+        ):
             end_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
             self._draw_tap_quad(
                 painter, end_x, end_y, end_w, end_scale, end_color, alpha // 2, note, draw_end_depth

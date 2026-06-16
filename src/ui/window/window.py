@@ -32,6 +32,7 @@ from src.const import NoteType
 from src.core.read import DataScanner, MetadataPreview, load_chart_file
 from src.core.write import save_chart_file
 from src.engine.playback import PlaybackController
+from src.notes.geometry import iter_note_records
 
 if TYPE_CHECKING:
     from src.model import Chart
@@ -712,21 +713,14 @@ class MainWindow(QMainWindow):
         if note is None:
             html = '<span style="color:#888;font-size:12px;">Click a note to inspect it.</span>'
             if self.current_chart:
-                flat_total = 0
                 counts: dict[str, int] = {}
-                for n in self.current_chart.notes:
-                    steps = getattr(n, "steps", None)
-                    if steps is not None:
-                        flat_total += len(steps)
-                        for s in steps:
-                            counts[s.note_type.value] = counts.get(s.note_type.value, 0) + 1
-                    else:
-                        flat_total += 1
-                        counts[n.note_type.value] = counts.get(n.note_type.value, 0) + 1
+                note_records = iter_note_records(self.current_chart.notes)
+                for n in note_records:
+                    counts[n.note_type.value] = counts.get(n.note_type.value, 0) + 1
                 html += "<br><br>"
                 html += (
                     f'<span style="color:#aaa;font-size:12px;">Total notes: '
-                    f'<b style="color:#fff;">{flat_total}</b></span><br>'
+                    f'<b style="color:#fff;">{len(note_records)}</b></span><br>'
                 )
                 for nt in sorted(counts):
                     html += (

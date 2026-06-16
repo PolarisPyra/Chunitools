@@ -101,7 +101,11 @@ class PlayViewSlideNotesMixin:
                     cell=start_cell,
                     width=start_width,
                 )
-            if _depth_in_draw_range(draw_end_depth):
+            end_tick = self.chart.timeline.note_end_tick(note) if self.chart else 0
+            if (
+                _depth_in_draw_range(draw_end_depth)
+                and not self._air_replaces_endpoint(note, end_tick, end_cell, end_width)
+            ):
                 end_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
                 self._draw_tap_quad(
                     painter,
@@ -211,6 +215,7 @@ class PlayViewSlideNotesMixin:
                 self._should_draw_slide_step_head(index, step_count, step)
                 and _depth_in_draw_range(step_depth)
                 and self.visible_note_types.get(step.note_type.value, True)
+                and not self._air_replaces_endpoint(note, current_tick, step.end_cell, step.end_width)
             ):
                 self._draw_tap_quad(
                     painter,
@@ -230,7 +235,12 @@ class PlayViewSlideNotesMixin:
             prev_cell, prev_width = float(step.end_cell), float(step.end_width)
             prev_depth = step_depth
 
-        if _depth_in_draw_range(last_depth):
+        if _depth_in_draw_range(last_depth) and not self._air_replaces_endpoint(
+            note,
+            current_tick,
+            prev_cell,
+            prev_width,
+        ):
             end_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
             self._draw_tap_quad(
                 painter,
@@ -262,4 +272,3 @@ class PlayViewSlideNotesMixin:
         if index == step_count - 1:
             return False
         return step.note_type in {NoteType.SLD, NoteType.SXD}
-

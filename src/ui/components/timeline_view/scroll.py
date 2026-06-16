@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QRect
 
+from src.notes.geometry import iter_note_records
 from src.ui.components.timeline_view.constants import (
     SCROLL_UNITS_PER_MEASURE,
     SCROLLBAR_MARGIN,
@@ -78,7 +79,7 @@ class TimelineScrollMixin:
     def select_measure(self, measure: int) -> list[Note]:
         if not self.chart:
             return []
-        notes = [n for n in self.chart.notes if n.measure == measure]
+        notes = [n for n in iter_note_records(self.chart.notes) if n.measure == measure]
         self.selected_notes = notes
         self.selected_note = notes[0] if notes else None
         self.notes_selected.emit(list(notes))

@@ -126,6 +126,28 @@ class PlayViewAirNotesMixin:
                 cell, width = span
 
         return _air_arrow_screen_span(cell, width, vanish_x, scale)
+
+    def _air_anchor_span_for_note(self, note: Note, *, end: bool = False) -> tuple[float, float]:
+        timeline = self.chart.timeline if self.chart else None
+        if not timeline:
+            return float(note.cell), float(note.width)
+
+        anchor = timeline.note_anchor(note)
+        if anchor is None:
+            return float(note.cell), float(note.width)
+
+        tick = timeline.note_end_tick(note) if end else timeline.note_tick(note)
+        anchor_end_tick = timeline.note_end_tick(anchor)
+        if tick == anchor_end_tick and anchor_end_tick != timeline.note_tick(anchor):
+            return float(getattr(anchor, "end_cell", anchor.cell)), float(
+                getattr(anchor, "end_width", anchor.width)
+            )
+
+        span = timeline.span_at(anchor, tick)
+        if span is not None:
+            return float(span[0]), float(span[1])
+        return float(anchor.cell), float(anchor.width)
+
     def _air_anchor_for_note(self, note: Note) -> tuple[Note, bool] | None:
         timeline = self.chart.timeline if self.chart else None
         anchor = timeline.note_anchor(note) if timeline else getattr(note, "parent", None)
@@ -442,6 +464,7 @@ class PlayViewAirNotesMixin:
         world_y: float,
         alpha: int,
         depth: float,
+        color: QColor | None = None,
     ) -> None:
         if painter is None:
             return
@@ -451,14 +474,25 @@ class PlayViewAirNotesMixin:
 
         scale = _projection_for_depth(depth, self.width(), self.height())[0]
         body = QPolygonF(corners)
-        fill = QColor(231, 92, 255, alpha)
+        cap_color = color if color is not None else QColor(231, 92, 255)
+        fill = QColor(cap_color.red(), cap_color.green(), cap_color.blue(), alpha)
         edge = max(1, int(scale * 2))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(fill)
         painter.drawPolygon(body)
 
-        highlight = QColor(255, 230, 255, min(255, alpha + 30))
-        shadow = QColor(90, 0, 140, max(0, alpha // 2))
+        highlight = QColor(
+            min(255, cap_color.red() + 80),
+            min(255, cap_color.green() + 80),
+            min(255, cap_color.blue() + 80),
+            min(255, alpha + 30),
+        )
+        shadow = QColor(
+            max(0, cap_color.red() // 3),
+            max(0, cap_color.green() // 3),
+            max(0, cap_color.blue() // 3),
+            max(0, alpha // 2),
+        )
         painter.setPen(QPen(highlight, edge))
         painter.drawLine(corners[0], corners[1])
         painter.setPen(QPen(shadow, edge))
@@ -486,6 +520,8 @@ class PlayViewAirNotesMixin:
             return
         start_world_y = _air_path_world_y(note)
         end_world_y = _air_path_world_y(note, end=True)
+        source_start_cell, source_start_width = self._air_anchor_span_for_note(note)
+        source_end_cell, source_end_width = self._air_anchor_span_for_note(note, end=True)
         (
             start_cell,
             start_width,
@@ -496,12 +532,12 @@ class PlayViewAirNotesMixin:
             end_world_y,
             draw_end_depth,
         ) = _clip_air_path_segment(
-            note.cell,
-            note.width,
+            source_start_cell,
+            source_start_width,
             start_world_y,
             depth,
-            note.cell,
-            note.width,
+            source_end_cell,
+            source_end_width,
             end_world_y,
             end_depth,
         )
@@ -512,8 +548,8 @@ class PlayViewAirNotesMixin:
         self._draw_air_lift_if_needed(
             painter,
             note,
-            float(note.cell),
-            float(note.width),
+            source_start_cell,
+            source_start_width,
             depth,
             _air_path_world_y(note),
             vanish_x,
@@ -556,15 +592,6 @@ class PlayViewAirNotesMixin:
                 depth,
             )
 
-        if note.note_type != NoteType.AHX and _depth_in_draw_range(end_depth):
-            self._draw_air_action_bar_3d(
-                painter,
-                end_cell,
-                end_width,
-                end_world_y if end_world_y is not None else 0.0,
-                alpha,
-                end_depth,
-            )
     def _draw_air_slide(
         self,
         painter: QPainter,
@@ -1069,4 +1096,3 @@ class PlayViewAirNotesMixin:
                     alpha,
                     curr_depth,
                 )
-

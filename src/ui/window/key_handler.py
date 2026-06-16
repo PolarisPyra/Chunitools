@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent  # noqa: TC002
 
+from src.notes.geometry import iter_note_records
+
 if TYPE_CHECKING:
     from src.workspace.layout import MainWindow
 
@@ -75,7 +77,7 @@ class KeyHandler:
         chart = self.window.current_chart
         if not chart:
             return
-        notes = list(chart.notes)
+        notes = iter_note_records(chart.notes)
         if not notes:
             return
         v = self.window.visualizer

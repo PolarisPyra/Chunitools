@@ -117,6 +117,15 @@ def note_get_steps(note: Note) -> tuple[Note, ...]:
         return ()
 
 
+def iter_note_records(notes: list[Note]) -> list[Note]:
+    """Return top-level notes plus composite steps as selectable note records."""
+    records: list[Note] = []
+    for note in notes:
+        records.append(note)
+        records.extend(note_get_steps(note))
+    return records
+
+
 def note_tick_span(note: Note, resolution: int) -> tuple[int, int]:
     """Return (start_tick, end_tick) for a note."""
     start = note.measure * resolution + note.offset

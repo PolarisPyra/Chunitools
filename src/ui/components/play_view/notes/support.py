@@ -14,6 +14,7 @@ from src.ui.components.play_view.geometry import (
     DRAW_DEPTH_MIN,
     FIELD_HALF,
     LANE_WIDTH,
+    NOTE_LANE_GAP_PX,
     NOTE_WIDTH_FRAC,
     RENDER_BIG_NOTE_DEPTH,
     RENDER_NOTE_DEPTH,
@@ -47,6 +48,46 @@ AIR_WRAPPED_EX_HEAD_TYPES = {NoteType.CHR, NoteType.HXD, NoteType.SXD, NoteType.
 
 
 class PlayViewSupportNotesMixin:
+    def _is_note_or_step_of(self, note: Note, candidate: Note) -> bool:
+        if candidate is note:
+            return True
+        return candidate in getattr(note, "steps", ())
+
+    def _air_endpoint_target_names(self, note: Note) -> set[str]:
+        if note.note_type in {NoteType.HLD, NoteType.HXD}:
+            return {"HLD", "HXD"}
+        if note.note_type in {NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC}:
+            return {"SLD", "SLC", "SXD", "SXC"}
+        return {note.note_type.value}
+
+    def _air_replaces_endpoint(self, note: Note, tick: int, cell: float, width: float) -> bool:
+        if not self.chart:
+            return False
+        timeline = self.chart.timeline
+        target_names = self._air_endpoint_target_names(note)
+        for candidate in self._notes:
+            if candidate.note_type not in {
+                NoteType.AIR,
+                NoteType.AUR,
+                NoteType.AUL,
+                NoteType.ADW,
+                NoteType.ADR,
+                NoteType.ADL,
+                NoteType.AHD,
+                NoteType.AHX,
+            }:
+                continue
+            if timeline.note_tick(candidate) != tick:
+                continue
+            anchor = timeline.note_anchor(candidate)
+            if anchor is not None and self._is_note_or_step_of(note, anchor):
+                return True
+            if getattr(candidate, "target_note", "") not in target_names:
+                continue
+            if anchor is None and candidate.cell == cell and candidate.width == width:
+                return True
+        return False
+
     def _get_note_color(self, note: Note) -> QColor:
         if note.note_type == NoteType.ALD:
             color_code = getattr(note, "color", "DEF")
@@ -282,6 +323,11 @@ class PlayViewSupportNotesMixin:
         w_x0 = cell * LANE_WIDTH - FIELD_HALF
         w_x1 = (cell + width) * LANE_WIDTH - FIELD_HALF
         z = _compact_depth_to_z(depth)
+        scale = _projection_for_depth(depth, w, h)[0]
+        gap_world = NOTE_LANE_GAP_PX / max(scale, 0.001)
+        if w_x1 - w_x0 > gap_world:
+            w_x0 += gap_world / 2.0
+            w_x1 -= gap_world / 2.0
         half_depth = (RENDER_BIG_NOTE_DEPTH if is_big else RENDER_NOTE_DEPTH) / 2.0
         z_far = z - half_depth
         z_near = z + half_depth
@@ -312,12 +358,22 @@ class PlayViewSupportNotesMixin:
         end_center = (end_cell + end_width / 2.0) * LANE_WIDTH - FIELD_HALF
         start_visual_width = start_width * LANE_WIDTH * start_width_factor
         end_visual_width = end_width * LANE_WIDTH * end_width_factor
+        start_z = _compact_depth_to_z(start_depth)
+        end_z = _compact_depth_to_z(end_depth)
+        start_scale = _projection_for_depth(start_depth, viewport_w, viewport_h)[0]
+        end_scale = _projection_for_depth(end_depth, viewport_w, viewport_h)[0]
+        start_visual_width = max(
+            1.0 / max(start_scale, 0.001),
+            start_visual_width - NOTE_LANE_GAP_PX / max(start_scale, 0.001),
+        )
+        end_visual_width = max(
+            1.0 / max(end_scale, 0.001),
+            end_visual_width - NOTE_LANE_GAP_PX / max(end_scale, 0.001),
+        )
         start_x0 = start_center - start_visual_width / 2.0
         start_x1 = start_center + start_visual_width / 2.0
         end_x0 = end_center - end_visual_width / 2.0
         end_x1 = end_center + end_visual_width / 2.0
-        start_z = _compact_depth_to_z(start_depth)
-        end_z = _compact_depth_to_z(end_depth)
         return [
             QPointF(*_project_point(start_x0, start_y, start_z, viewport_w, viewport_h)),
             QPointF(*_project_point(start_x1, start_y, start_z, viewport_w, viewport_h)),

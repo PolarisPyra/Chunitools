@@ -28,6 +28,7 @@ VISIBLE_DEPTH = 20.0  # world units from judge to vanish plane
 # Tap quads are full lane-span quads:
 # x0 = 64 * lane - 512; x1 = x0 + 64 * width.
 NOTE_WIDTH_FRAC = 1.0
+NOTE_LANE_GAP_PX = 3.0
 RENDER_NOTE_DEPTH = 108.56
 RENDER_BIG_NOTE_DEPTH = 118.0 * 1.13
 RENDER_AIR_HEIGHT = 233.0
@@ -294,7 +295,7 @@ def _note_screen_span(
 ) -> tuple[float, float]:
     lane_x = vanish_x + ((cell * LANE_UNITS) - WORLD_HALF) * PIXELS_PER_UNIT * scale
     lane_w = LANE_UNITS * width * PIXELS_PER_UNIT * scale
-    note_w = lane_w * NOTE_WIDTH_FRAC
+    note_w = max(1.0, lane_w * NOTE_WIDTH_FRAC - NOTE_LANE_GAP_PX)
     return lane_x + (lane_w - note_w) / 2.0, note_w
 
 
