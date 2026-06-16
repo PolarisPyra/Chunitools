@@ -23,7 +23,7 @@ from src.ui.theme.notes import get_note_color
 if TYPE_CHECKING:
     from src.engine.timeline import ChartTimeline
     from src.notes import Note
-    from src.ui.components.viewport import ChartViewport
+    from src.ui.components.timeline_view import ChartViewport
     from src.ui.view.projection import ViewProjection
 
 

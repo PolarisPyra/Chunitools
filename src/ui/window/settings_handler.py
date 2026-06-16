@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QTimer
 
 from src.config import DEFAULT_SCROLL_SPEED, settings
-from src.ui.components.viewport import DEFAULT_VIEW_LANE_WIDTH
+from src.ui.components.timeline_view import DEFAULT_VIEW_LANE_WIDTH
 
 if TYPE_CHECKING:
     from src.workspace.layout import MainWindow

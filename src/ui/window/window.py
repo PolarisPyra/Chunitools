@@ -44,7 +44,7 @@ from src.ui.components.fps_overlay import FpsOverlay
 from src.ui.components.picker import ChartPicker
 from src.ui.components.play_view import PlayView3D
 from src.ui.components.radar import NoteDensityRadar
-from src.ui.components.viewport import ChartViewport
+from src.ui.components.timeline_view import ChartViewport
 from src.ui.theme.styles import get_main_stylesheet
 from src.ui.view.timeline_widget import TimelineWidget
 from src.ui.window import export as export_ops
