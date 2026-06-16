@@ -46,6 +46,15 @@ AIR_WRAPPED_GROUND_TYPES = {
     NoteType.SXC,
 }
 AIR_WRAPPED_EX_HEAD_TYPES = {NoteType.CHR, NoteType.HXD, NoteType.SXD, NoteType.SXC}
+AIR_ANCHOR_FLOOR_TYPES = {
+    NoteType.HLD,
+    NoteType.HXD,
+    NoteType.SLD,
+    NoteType.SLC,
+    NoteType.SXD,
+    NoteType.SXC,
+}
+AIR_LIFT_STEM_WIDTH_FACTOR = 0.42
 
 
 class PlayViewAirNotesMixin:
@@ -105,12 +114,9 @@ class PlayViewAirNotesMixin:
         vanish_x: float,
         scale: float,
     ) -> tuple[float, float]:
+        anchor = getattr(note, "parent", None)
         timeline = self.chart.timeline if self.chart else None
-        if not timeline:
-            return _air_arrow_screen_span(note.cell, note.width, vanish_x, scale)
-
-        anchor = timeline.note_anchor(note)
-        if not anchor:
+        if anchor is None or not timeline:
             return _air_arrow_screen_span(note.cell, note.width, vanish_x, scale)
 
         tick = timeline.note_tick(note)
@@ -128,12 +134,9 @@ class PlayViewAirNotesMixin:
         return _air_arrow_screen_span(cell, width, vanish_x, scale)
 
     def _air_anchor_span_for_note(self, note: Note, *, end: bool = False) -> tuple[float, float]:
+        anchor = getattr(note, "parent", None)
         timeline = self.chart.timeline if self.chart else None
-        if not timeline:
-            return float(note.cell), float(note.width)
-
-        anchor = timeline.note_anchor(note)
-        if anchor is None:
+        if anchor is None or not timeline:
             return float(note.cell), float(note.width)
 
         tick = timeline.note_end_tick(note) if end else timeline.note_tick(note)
@@ -150,7 +153,7 @@ class PlayViewAirNotesMixin:
 
     def _air_anchor_for_note(self, note: Note) -> tuple[Note, bool] | None:
         timeline = self.chart.timeline if self.chart else None
-        anchor = timeline.note_anchor(note) if timeline else getattr(note, "parent", None)
+        anchor = getattr(note, "parent", None)
         if anchor is None:
             return None
 
@@ -168,6 +171,12 @@ class PlayViewAirNotesMixin:
             return False
         anchor, _end = anchor_info
         return anchor in self._notes and self.visible_note_types.get(anchor.note_type.value, True)
+    def _air_has_floor_anchor(self, note: Note) -> bool:
+        anchor_info = self._air_anchor_for_note(note)
+        if anchor_info is None:
+            return False
+        anchor, _end = anchor_info
+        return anchor.note_type in AIR_ANCHOR_FLOOR_TYPES
     def _air_wrapped_start_world_y(self, note: Note) -> float | None:
         return _air_path_world_y(note)
     def _air_anchor_world_y(self, note: Note) -> float | None:
@@ -231,13 +240,15 @@ class PlayViewAirNotesMixin:
         x, y_top, w, scale = self._air_path_screen_span_at(
             cell, width, depth, path_world_y, vanish_x, vanish_y, judge_y
         )
+        stem_w = max(3.0, w * AIR_LIFT_STEM_WIDTH_FACTOR)
+        stem_x = x + (w - stem_w) / 2.0
         _, y_bottom, _, _ = self._air_path_screen_span_at(
             cell, width, depth, anchor_world_y, vanish_x, vanish_y, judge_y
         )
         overlap = max(3.0, scale * 6.0)
         y_top_overlapped = y_top - overlap if y_bottom > y_top else y_top + overlap
         self._draw_air_lift_connector(
-            painter, x, y_bottom, y_top_overlapped, w, scale, color, alpha
+            painter, stem_x, y_bottom, y_top_overlapped, stem_w, scale, color, alpha
         )
     def _draw_air_lift_connector(
         self,
@@ -370,7 +381,8 @@ class PlayViewAirNotesMixin:
         vanish_y: float,
         judge_y: float,
     ) -> None:
-        if self._air_anchor_for_note(note) is not None or note.note_type == NoteType.AHX:
+        anchor_info = self._air_anchor_for_note(note)
+        if anchor_info is not None or note.note_type == NoteType.AHX:
             # Anchor gives us the correct lane span (X, W). Only override Y when
             # the anchor itself is at air height (not ground-level).
             anchored_y = self._air_anchor_screen_y(note, depth, vanish_y, judge_y)
@@ -378,10 +390,42 @@ class PlayViewAirNotesMixin:
             # anchored_y is None when the anchor has no air height → keep elevated y
             if anchored_y is not None:
                 y = anchored_y
+            else:
+                self._draw_air_ground_step_base_for_anchor(
+                    painter,
+                    note,
+                    depth,
+                    alpha,
+                )
 
         arrow_color = get_note_color(nt)
         arrow_color.setAlpha(alpha)
         self._draw_air_arrow(painter, x, y, w, scale, arrow_color, alpha, nt)
+    def _draw_air_ground_step_base_for_anchor(
+        self,
+        painter: QPainter,
+        note: Note,
+        depth: float,
+        alpha: int,
+    ) -> None:
+        anchor_info = self._air_anchor_for_note(note)
+        if anchor_info is None:
+            return
+        anchor, _end = anchor_info
+        if anchor.note_type not in AIR_ANCHOR_FLOOR_TYPES:
+            return
+
+        cell, width = self._air_anchor_span_for_note(note)
+        color = get_note_color(NoteType.AIR)
+        self._draw_air_action_bar_3d(
+            painter,
+            cell,
+            width,
+            0.0,
+            alpha,
+            depth,
+            color,
+        )
     def _draw_air_start_arrow_if_needed(
         self,
         painter: QPainter,
@@ -426,7 +470,7 @@ class PlayViewAirNotesMixin:
 
         # When targeting a ground note, the arrow sits on the ground note
         # at ground level, not at the air slide's elevated height.
-        if target_type not in {
+        is_ground_target = target_type not in {
             "AIR",
             "AUR",
             "AUL",
@@ -438,7 +482,8 @@ class PlayViewAirNotesMixin:
             "ASD",
             "ASC",
             "DEF",
-        }:
+        }
+        if is_ground_target:
             _, ground_y, _ = _projection_for_depth(depth, self.width(), self.height())
             y = ground_y
 
@@ -497,6 +542,32 @@ class PlayViewAirNotesMixin:
         painter.drawLine(corners[0], corners[1])
         painter.setPen(QPen(shadow, edge))
         painter.drawLine(corners[3], corners[2])
+    def _draw_air_action_stack_3d(
+        self,
+        painter: QPainter,
+        cell: float,
+        width: float,
+        bottom_world_y: float,
+        top_world_y: float,
+        alpha: int,
+        depth: float,
+    ) -> None:
+        if abs(top_world_y - bottom_world_y) < 0.5:
+            return
+        bar_count = 8
+        for index in range(1, bar_count + 1):
+            progress = index / (bar_count + 1)
+            world_y = _lerp(bottom_world_y, top_world_y, progress)
+            stack_color = QColor(145, 35, 255, max(45, alpha // 2))
+            self._draw_air_action_bar_3d(
+                painter,
+                cell,
+                width,
+                world_y,
+                max(45, alpha // 2),
+                depth,
+                stack_color,
+            )
     def _draw_air_hold_segment(
         self,
         painter: QPainter,
@@ -592,6 +663,28 @@ class PlayViewAirNotesMixin:
                 depth,
             )
 
+        if _depth_in_draw_range(end_depth) and end_world_y is not None:
+            self._draw_air_action_bar_3d(
+                painter,
+                source_end_cell,
+                source_end_width,
+                end_world_y,
+                alpha,
+                end_depth,
+            )
+            if note.note_type == NoteType.AHX:
+                anchor_world_y = self._air_anchor_world_y(note)
+                if anchor_world_y is not None:
+                    self._draw_air_action_stack_3d(
+                        painter,
+                        source_end_cell,
+                        source_end_width,
+                        anchor_world_y,
+                        end_world_y,
+                        alpha,
+                        end_depth,
+                    )
+
     def _draw_air_slide(
         self,
         painter: QPainter,
@@ -633,6 +726,7 @@ class PlayViewAirNotesMixin:
                 return
             start_world_y = self._air_wrapped_start_world_y(note)
             end_world_y = _air_path_world_y(note, end=True)
+            source_start_cell, source_start_width = self._air_anchor_span_for_note(note)
             (
                 start_cell,
                 start_width,
@@ -643,8 +737,8 @@ class PlayViewAirNotesMixin:
                 draw_end_world_y,
                 draw_end_depth,
             ) = _clip_air_path_segment(
-                note.cell,
-                note.width,
+                source_start_cell,
+                source_start_width,
                 start_world_y,
                 depth,
                 end_cell,
@@ -658,8 +752,8 @@ class PlayViewAirNotesMixin:
             self._draw_air_lift_if_needed(
                 painter,
                 note,
-                float(note.cell),
-                float(note.width),
+                source_start_cell,
+                source_start_width,
                 depth,
                 _air_path_world_y(note),
                 vanish_x,
@@ -684,6 +778,26 @@ class PlayViewAirNotesMixin:
                 start_width_factor=_air_path_width_factor(start_width),
                 end_width_factor=_air_path_width_factor(draw_end_width),
             )
+
+            if _depth_in_draw_range(end_depth) and end_world_y is not None:
+                self._draw_air_action_bar_3d(
+                    painter,
+                    end_cell,
+                    end_width,
+                    end_world_y,
+                    alpha,
+                    end_depth,
+                )
+                if start_world_y is not None:
+                    self._draw_air_action_stack_3d(
+                        painter,
+                        end_cell,
+                        end_width,
+                        start_world_y,
+                        end_world_y,
+                        alpha,
+                        end_depth,
+                    )
 
             if _depth_in_draw_range(depth):
                 if not self._air_anchor_draws_separately(note):
@@ -714,15 +828,6 @@ class PlayViewAirNotesMixin:
                     depth,
                 )
 
-            if _depth_in_draw_range(end_depth):
-                self._draw_air_action_bar_3d(
-                    painter,
-                    end_cell,
-                    end_width,
-                    end_world_y if end_world_y is not None else 0.0,
-                    alpha,
-                    end_depth,
-                )
     def _draw_air_slide_steps(
         self,
         painter: QPainter,
@@ -743,27 +848,39 @@ class PlayViewAirNotesMixin:
         if not tl or not note.steps:
             return
 
+        source_start_cell, source_start_width = self._air_anchor_span_for_note(note)
+        start_world_y = self._air_wrapped_start_world_y(note)
+        start_x, start_y, start_w, start_scale = self._air_path_screen_span_at(
+            source_start_cell,
+            source_start_width,
+            depth,
+            start_world_y,
+            vanish_x,
+            vanish_y,
+            judge_y,
+        )
+
         if _depth_in_draw_range(depth):
             if not self._air_anchor_draws_separately(note):
                 self._draw_air_wrapped_ground_head(
                     painter,
-                    x,
-                    y,
-                    w,
-                    scale,
+                    start_x,
+                    start_y,
+                    start_w,
+                    start_scale,
                     alpha,
                     note,
                     depth,
-                    cell=note.cell,
-                    width=note.width,
+                    cell=source_start_cell,
+                    width=source_start_width,
                 )
             self._draw_air_start_arrow_if_needed(
                 painter,
                 note,
-                x,
-                y,
-                w,
-                scale,
+                start_x,
+                start_y,
+                start_w,
+                start_scale,
                 alpha,
                 judge_time,
                 vanish_x,
@@ -772,15 +889,15 @@ class PlayViewAirNotesMixin:
                 depth,
             )
 
-        prev_cell, prev_width = float(note.cell), float(note.width)
-        prev_world_y = self._air_wrapped_start_world_y(note)
+        prev_cell, prev_width = source_start_cell, source_start_width
+        prev_world_y = start_world_y
         prev_depth = depth
 
         self._draw_air_lift_if_needed(
             painter,
             note,
-            float(note.cell),
-            float(note.width),
+            source_start_cell,
+            source_start_width,
             depth,
             _air_path_world_y(note),
             vanish_x,
@@ -790,7 +907,6 @@ class PlayViewAirNotesMixin:
             alpha,
         )
 
-        step_count = len(note.steps)
         for index, step in enumerate(note.steps):
             step_abs = step.measure + step.offset / tl.resolution
             step_end_abs = step_abs + step.duration / tl.resolution
@@ -892,11 +1008,12 @@ class PlayViewAirNotesMixin:
                 end_width_factor=_air_path_width_factor(step_width),
             )
 
-            if (
-                self._air_slide_step_draws_bar(index, step_count, step)
-                and _depth_in_draw_range(step_depth)
-                and self.visible_note_types.get("ASD", True)
-            ):
+            prev_cell = float(step.end_cell)
+            prev_width = float(step.end_width)
+            prev_world_y = step_world_y
+            prev_depth = step_depth
+
+            if index == len(note.steps) - 1 and _depth_in_draw_range(step_depth):
                 self._draw_air_action_bar_3d(
                     painter,
                     float(step.end_cell),
@@ -905,18 +1022,17 @@ class PlayViewAirNotesMixin:
                     alpha,
                     step_depth,
                 )
-
-            prev_cell = float(step.end_cell)
-            prev_width = float(step.end_width)
-            prev_world_y = step_world_y
-            prev_depth = step_depth
-    def _air_slide_step_draws_bar(
-        self,
-        index: int,
-        step_count: int,
-        step: Note,
-    ) -> bool:
-        return step.note_type == NoteType.ASD or index == step_count - 1
+                start_world_y_for_stack = _air_path_world_y(step)
+                if start_world_y_for_stack is not None and step_world_y is not None:
+                    self._draw_air_action_stack_3d(
+                        painter,
+                        float(step.end_cell),
+                        float(step.end_width),
+                        start_world_y_for_stack,
+                        step_world_y,
+                        alpha,
+                        step_depth,
+                    )
     def _draw_air_wrapped_ground_head(
         self,
         painter: QPainter,
@@ -931,6 +1047,8 @@ class PlayViewAirNotesMixin:
         cell: float,
         width: float,
     ) -> None:
+        if self._air_has_floor_anchor(note):
+            return
         wrapped = self._air_wrapped_ground_type(note)
         if wrapped is None:
             return

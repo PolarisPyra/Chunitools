@@ -28,9 +28,7 @@ class HoldRendererMixin(RendererMixinSupport):
         rect = QRectF(
             x_pos, y_end - self.constants.HEAD_HEIGHT / 2, width, self.constants.HEAD_HEIGHT
         )
-        if self._has_air_reference_at(
-            timeline.note_end_tick(note), note.cell, note.width, "HLD", timeline
-        ):
+        if self._has_explicit_air_endpoint_parent(note, timeline.note_end_tick(note), timeline):
             return
         self._draw_rounded_rect(painter, rect, self.colors.hold)
         self._draw_tap_symbol(painter, rect)

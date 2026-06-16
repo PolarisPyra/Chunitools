@@ -11,26 +11,18 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 from src.core.const import AIR_NOTE_TYPES, NoteType, RenderRole
-from src.notes import (
-    Air,
-    AirSlide,
-    AirSlideStart,
-    Note,
-    Slide,
-    SlideTo,
-)
 from src.notes.geometry import (
     note_duration,
     note_end_cell,
     note_end_width,
     note_get_steps,
     note_has_steps,
-    note_target_note,
 )
 
 if TYPE_CHECKING:
     from src.core.models import Chart
     from src.engine.hitsounds import AudibleEvent
+    from src.notes import Note
 
 __all__ = ["BpmPoint", "ChartTimeline", "TimelineProtocol"]
 
@@ -85,12 +77,6 @@ SLIDE_CHAIN_TYPES: frozenset[NoteType] = frozenset(
 CONTROL_POINT_TYPES: frozenset[NoteType] = frozenset(
     {NoteType.SLC, NoteType.SXC, NoteType.ASC}
 )
-TARGET_NOTE_FAMILIES: dict[NoteType, frozenset[NoteType]] = {
-    NoteType.HLD: frozenset({NoteType.HLD, NoteType.HXD}),
-    NoteType.SLD: frozenset({NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}),
-    NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC}),
-    NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC}),
-}
 AIR_ANCHOR_TYPES: frozenset[NoteType] = AIR_NOTE_TYPES - {NoteType.ALD}
 AIR_PATH_TYPES: frozenset[NoteType] = frozenset(
     {NoteType.AHD, NoteType.ASD, NoteType.ASC, NoteType.AHX}
@@ -228,9 +214,6 @@ class ChartTimeline:
 
     def _get_note_end_width(self, note: Note) -> int:
         return note_end_width(note)
-
-    def _get_note_target_note(self, note: Note) -> str:
-        return note_target_note(note)
 
     def _iter_notes_with_steps(self) -> Iterator[Note]:
         """Yield top-level notes and nested slide steps in render order."""
@@ -385,44 +368,9 @@ class ChartTimeline:
 
         return None
 
-    def _resolve_note_anchor(self, note: Note) -> str | None:  # noqa: PLR0911
+    def _resolve_note_anchor(self, note: Note) -> str | None:
         if note.parent is not None:
             self._anchors[note] = note.parent
-            return None
-
-        if note.note_type not in AIR_ANCHOR_TYPES:
-            return None
-
-        target_type = self._get_note_target_note(note)
-        if not target_type:
-            return (
-                f"{note.note_type.value} at {note.measure}:{note.offset} "
-                f"(cell={note.cell}, width={note.width}) missing target note type"
-            )
-
-        required_type = self._parse_note_type(target_type)
-        if required_type is None:
-            return (
-                f"{note.note_type.value} at {note.measure}:{note.offset} "
-                f"(cell={note.cell}, width={note.width}) has unresolved target "
-                f"'{target_type}' at this timestamp"
-            )
-
-        candidates = self._anchor_candidates(note, required_type)
-        if len(candidates) == 0:
-            return (
-                f"{note.note_type.value} at {note.measure}:{note.offset} "
-                f"(cell={note.cell}, width={note.width}) has unresolved target "
-                f"'{target_type}' at this timestamp"
-            )
-        if len(candidates) > 1:
-            return (
-                f"{note.note_type.value} at {note.measure}:{note.offset} "
-                f"(cell={note.cell}, width={note.width}) has {len(candidates)} "
-                f"matching targets for '{target_type}' at this timestamp"
-            )
-
-        self._anchors[note] = candidates[0]
         return None
 
     def _build_bpm_points(self) -> list[BpmPoint]:
@@ -569,91 +517,8 @@ class ChartTimeline:
         return self._predecessor_map.get(note)
 
     def resolve_anchor(self, note: Note) -> Note | None:
-        """Find the single exact parent/anchor note for AIR/AHD/ASD/ASC/etc."""
-        target_type = self._get_note_target_note(note)
-        if not target_type:
-            return None
-
-        required_type = self._parse_note_type(target_type)
-        if required_type is None:
-            return None
-
-        candidates = self._anchor_candidates(note, required_type)
-        return candidates[0] if candidates else None
-
-    def _parse_note_type(self, value: str) -> NoteType | None:
-        try:
-            return NoteType(value)
-        except ValueError:
-            return None
-
-    def _anchor_candidates(self, note: Note, required_type: NoteType) -> list[Note]:
-        tick = self.note_tick(note)
-        raw_matches = []
-        required_types = TARGET_NOTE_FAMILIES.get(required_type, frozenset({required_type}))
-        for candidate in self._iter_notes_with_steps():
-            if (
-                candidate is note
-                or candidate.note_type == NoteType.ALD
-                or candidate.note_type not in required_types
-            ):
-                continue
-
-            for anchor_tick, anchor_cell, anchor_width in self._exact_anchor_points(candidate):
-                if anchor_tick != tick or anchor_cell != note.cell or anchor_width != note.width:
-                    continue
-                if candidate not in raw_matches:
-                    raw_matches.append(candidate)
-                break
-
-        preferred_matches = self._preferred_anchor_matches(raw_matches, required_type)
-        matches = []
-        for candidate in preferred_matches:
-            anchor = (
-                candidate if isinstance(note, Air) else self._canonical_anchor_candidate(candidate)
-            )
-            if anchor not in matches:
-                matches.append(anchor)
-        return matches
-
-    def _preferred_anchor_matches(
-        self, candidates: list[Note], required_type: NoteType
-    ) -> list[Note]:
-        exact_matches = [
-            candidate for candidate in candidates if candidate.note_type == required_type
-        ]
-        if exact_matches:
-            return exact_matches
-
-        step_matches: list[Note] = [
-            candidate for candidate in candidates if isinstance(candidate, (SlideTo, AirSlide))
-        ]
-        if step_matches:
-            return step_matches
-
-        return candidates
-
-    def _exact_anchor_points(self, note: Note) -> tuple[tuple[int, int, int], ...]:
-        points = [(self.note_tick(note), int(note.cell), int(note.width))]
-        if self._get_note_duration(note) > 0:
-            points.append(
-                (
-                    self.note_end_tick(note),
-                    int(round(float(self._get_note_end_cell(note)))),
-                    max(1, int(round(float(self._get_note_end_width(note))))),
-                )
-            )
-        return tuple(points)
-
-    def _canonical_anchor_candidate(self, candidate: Note) -> Note:
-        if not isinstance(candidate, (SlideTo, AirSlide)):
-            return candidate
-
-        for note in self.chart.notes:
-            if isinstance(note, (Slide, AirSlideStart)) and candidate in note.steps:
-                return note
-
-        return candidate
+        """Return the explicit parent/anchor note for AIR/AHD/ASD/ASC/etc."""
+        return note.parent
 
     def is_mid_air(self, tick: int, cell: int, width: int) -> bool:
         """Check if a coordinate is inside an active air path."""

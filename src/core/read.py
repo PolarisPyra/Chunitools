@@ -89,6 +89,12 @@ _SYSTEM_CMD_VALUES: frozenset[str] = frozenset(
         "CLK",
     }
 )
+TARGET_NOTE_FAMILIES: dict[NoteType, frozenset[NoteType]] = {
+    NoteType.HLD: frozenset({NoteType.HLD, NoteType.HXD}),
+    NoteType.SLD: frozenset({NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC}),
+    NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC}),
+    NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC}),
+}
 
 
 def _node_text(parent: ET.Element, path: str, default: str = "") -> str:
@@ -325,7 +331,8 @@ class C2sParser(IChartParser):
             required_type = NoteType(target_type)
         except ValueError:
             return False
-        return candidate.note_type == required_type
+        target_family = TARGET_NOTE_FAMILIES.get(required_type, frozenset({required_type}))
+        return candidate.note_type in target_family
 
     def _is_generalized_air(self, note: Note) -> bool:
         return note.note_type in (
@@ -364,15 +371,14 @@ class C2sParser(IChartParser):
         candidates: list[Note],
         target_type: str,
     ) -> Note | None:
+        if not target_type or target_type == "DEF":
+            return None
         filtered = self._filter_previous_candidates(note, candidates)
-        if target_type and target_type != "DEF":
-            target_filtered = [
-                candidate for candidate in filtered if self._matches_target_note(candidate, target_type)
-            ]
-            if target_filtered:
-                return target_filtered[0]
-        if filtered:
-            return filtered[0]
+        target_filtered = [
+            candidate for candidate in filtered if self._matches_target_note(candidate, target_type)
+        ]
+        if target_filtered:
+            return target_filtered[0]
         return None
 
     def _join_slide_segments(self) -> list[Slide]:
@@ -474,7 +480,7 @@ class C2sParser(IChartParser):
                         best = cand
                         break
                 if not best:
-                    best = candidates[0]
+                    break
                 chain.append(best)
                 used.add(best)
                 current = best
@@ -497,6 +503,22 @@ class C2sParser(IChartParser):
                 f"(no matching successor at end position)"
             )
         return joined
+
+    def _with_air_slide_step_parents(
+        self,
+        note: AirSlideStart,
+        parent: Note | None,
+    ) -> AirSlideStart:
+        if not note.steps:
+            return note
+
+        steps: list[AirSlide] = []
+        previous_parent: Note | None = parent
+        for step in note.steps:
+            step_with_parent = replace(step, parent=previous_parent)
+            steps.append(step_with_parent)
+            previous_parent = step_with_parent
+        return replace(note, parent=parent, steps=tuple(steps))
 
     # -- Pass 3: Air-note anchoring -------------------------------------------
 
@@ -545,9 +567,9 @@ class C2sParser(IChartParser):
             target_type = getattr(note, "target_note", "DEF")
             anchor = self._select_previous_candidate(note, candidates, target_type)
             if anchor:
-                note_obj = replace(note, parent=anchor)
+                note_obj = self._with_air_slide_step_parents(note, anchor)
             else:
-                note_obj = note
+                note_obj = self._with_air_slide_step_parents(note, None)
             final_notes.append(note_obj)
 
         # 3.2 Anchor individual remaining segments

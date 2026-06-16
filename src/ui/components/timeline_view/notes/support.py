@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+from src.core.const import AIR_ARROW_NOTES, NoteType
+
 if TYPE_CHECKING:
     from PySide6.QtCore import QPointF, QRectF
     from PySide6.QtGui import QColor, QPainter
@@ -88,12 +90,20 @@ class RendererMixinSupport:
     ) -> tuple[Any, ...]:
         raise NotImplementedError
 
-    def _has_air_reference_at(
-        self,
-        tick: int,
-        cell: int,
-        width: int,
-        target_note: str,
-        timeline: Any,
-    ) -> bool:
-        raise NotImplementedError
+    def _has_explicit_air_endpoint_parent(self, note: Any, tick: int, timeline: Any) -> bool:
+        for candidate in getattr(timeline.chart, "notes", []):
+            for air_candidate in (candidate, *getattr(candidate, "steps", ())):
+                if air_candidate.note_type not in {
+                    *AIR_ARROW_NOTES,
+                    NoteType.AHD,
+                    NoteType.AHX,
+                    NoteType.ASD,
+                    NoteType.ASC,
+                }:
+                    continue
+                if (
+                    getattr(air_candidate, "parent", None) is note
+                    and timeline.note_tick(air_candidate) == tick
+                ):
+                    return True
+        return False

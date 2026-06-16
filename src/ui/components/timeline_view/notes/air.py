@@ -3,8 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-NOTE_DEBUG = logging.getLogger("note_rendering_debug")
-
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
 
@@ -12,8 +10,10 @@ from src.core.const import AIR_ARROW_NOTES, GROUND_NOTE_TYPES, NoteType
 from src.notes.air import AirSlideStart
 from src.ui.components.timeline_view.notes.support import RendererMixinSupport
 from src.ui.theme.color_profile import GradientColor
-from src.ui.theme.notes import get_action_bar_color, get_note_color
+from src.ui.theme.notes import get_action_bar_color, get_air_crush_control_color, get_note_color
 from src.ui.view import timeline_compat
+
+NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 
 NOTE_ROLE_START = "ST"
 NOTE_ROLE_LINE_CONTROL = "LC"
@@ -61,7 +61,7 @@ class AirRendererMixin(RendererMixinSupport):
         current_position: float,
         timeline: Any,
     ) -> QRectF:
-        anchor = timeline.note_anchor(note)
+        anchor = getattr(note, "parent", None)
         tick = timeline.note_tick(note)
         if anchor:
             anchor_end_tick = timeline.note_end_tick(anchor)
@@ -83,52 +83,23 @@ class AirRendererMixin(RendererMixinSupport):
         target_note = getattr(note, "target_note", "")
         if target_note not in {"HLD", "SLD"}:
             return False
-        anchor = timeline.note_anchor(note)
+        anchor = getattr(note, "parent", None)
         if not anchor:
             return False
         tick = timeline.note_tick(note)
         return bool(tick == timeline.note_end_tick(anchor) and tick != timeline.note_tick(anchor))
 
-    def _has_air_reference_at(
-        self,
-        tick: int,
-        cell: int,
-        width: int,
-        target_note: str,
-        timeline: Any,
-    ) -> bool:
-        for note in getattr(timeline.chart, "notes", []):
-            if note.note_type not in AIR_ARROW_NOTES:
-                continue
-            if getattr(note, "target_note", "") != target_note:
-                continue
-            if timeline.note_tick(note) == tick and note.cell == cell and note.width == width:
-                return True
-        return False
-
     def _air_arrow_color(self, note: Any, timeline: Any | None = None) -> QColor:
-        if timeline is not None:
-            anchor = timeline.note_anchor(note)
-            if anchor is not None and anchor.note_type in {
-                NoteType.HLD,
-                NoteType.HXD,
-                NoteType.SLD,
-                NoteType.SXD,
-                NoteType.SLC,
-                NoteType.SXC,
-            }:
-                return self._air_base_note_color(note)
-        elif getattr(note, "parent", None) is not None:
-            parent = note.parent
-            if parent.note_type in {
-                NoteType.HLD,
-                NoteType.HXD,
-                NoteType.SLD,
-                NoteType.SXD,
-                NoteType.SLC,
-                NoteType.SXC,
-            }:
-                return self._air_base_note_color(note)
+        parent = getattr(note, "parent", None)
+        if parent is not None and parent.note_type in {
+            NoteType.HLD,
+            NoteType.HXD,
+            NoteType.SLD,
+            NoteType.SXD,
+            NoteType.SLC,
+            NoteType.SXC,
+        }:
+            return self._air_base_note_color(note)
 
         is_down = note.note_type in (NoteType.ADW, NoteType.ADR, NoteType.ADL)
         color_modifier = getattr(note, "color", "DEF")
@@ -219,12 +190,13 @@ class AirRendererMixin(RendererMixinSupport):
     ) -> None:
         if not self.visible_note_types.get(note.note_type.value, True):
             return
-        anchor = timeline.note_anchor(note)
+        anchor = getattr(note, "parent", None)
         if anchor:
-            ys = self.projection.y(timeline.note_abs_end_pos(anchor), current_position)
+            anchor_rect = self._air_anchor_rect(note, current_position, timeline)
+            ys = anchor_rect.center().y()
             ye = self.projection.y(timeline.note_abs_end_pos(note), current_position)
-            x = self.projection.x(getattr(anchor, "end_cell", anchor.cell))
-            w = self.projection.w(float(getattr(anchor, "end_width", anchor.width)))
+            x = anchor_rect.x()
+            w = anchor_rect.width()
         else:
             ys = self.projection.y(timeline.note_abs_pos(note), current_position)
             ye = self.projection.y(timeline.note_abs_end_pos(note), current_position)
@@ -263,10 +235,14 @@ class AirRendererMixin(RendererMixinSupport):
         ws = self.projection.w(float(note.width))
         xe = self.projection.x(float(note.end_cell))
         we = self.projection.w(float(note.end_width))
+        crush_line = get_note_color(NoteType.ALD, getattr(note, "color", "DEF"))
         painter.setPen(
             QPen(
-                self._air_base_note_color(note),
-                self.constants.AIR_PATH_WIDTH,
+                crush_line,
+                3.0,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+                Qt.PenJoinStyle.RoundJoin,
             )
         )
         self._draw_bezier_line(painter, QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
@@ -283,19 +259,15 @@ class AirRendererMixin(RendererMixinSupport):
             return
         # Collect all points along the chain
         chain_points: list[QPointF] = []
-        ct, cc, cw = timeline.note_abs_pos(note), note.cell, note.width
+        ct = timeline.note_abs_pos(note)
+        anchor_rect = self._air_anchor_rect(note, current_position, timeline)
+        chain_points.append(QPointF(anchor_rect.center().x(), anchor_rect.center().y()))
         for step in note.steps:
-            ys = self.projection.y(ct, current_position)
-            xs = self.projection.x(float(cc))
-            ws = self.projection.w(float(cw))
-            chain_points.append(QPointF(xs + ws / 2, ys))
             ct += step.duration / timeline.resolution
-            cc, cw = step.end_cell, step.end_width
-        # Last point
-        ye = self.projection.y(ct, current_position)
-        xe = self.projection.x(float(cc))
-        we = self.projection.w(float(cw))
-        chain_points.append(QPointF(xe + we / 2, ye))
+            y = self.projection.y(ct, current_position)
+            x = self.projection.x(float(step.end_cell))
+            w = self.projection.w(float(step.end_width))
+            chain_points.append(QPointF(x + w / 2, y))
 
         painter.setPen(
             QPen(
@@ -448,7 +420,7 @@ class AirRendererMixin(RendererMixinSupport):
 
         if is_crush:
             self._draw_air_crush_elements(painter, note, current_position, timeline)
-        elif note.note_type in (NoteType.ALD, NoteType.AHD, NoteType.AHX, NoteType.ASD, NoteType.ASC):
+        elif note.note_type in (NoteType.AHD, NoteType.AHX):
             self._draw_air_end_bar(painter, note, current_position, timeline)
         elif is_action:
             self._draw_air_joint_bar(painter, note, current_position, timeline)
@@ -466,6 +438,7 @@ class AirRendererMixin(RendererMixinSupport):
             return
         start_tick = timeline.note_tick(note)
         res = timeline.resolution
+        control_color = get_air_crush_control_color()
         for offset_tick in range(0, duration + 1, crush_interval):
             current_abs_tick = start_tick + offset_tick
             progress = offset_tick / duration if duration > 0 else 0
@@ -476,31 +449,15 @@ class AirRendererMixin(RendererMixinSupport):
             x_pos = self.projection.x(float(curr_cell))
             width = self.projection.w(float(curr_width))
             y_pos = self.projection.y(current_abs_tick / res, current_position)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(get_action_bar_color()))
-            painter.drawRect(
-                QRectF(
-                    x_pos,
-                    y_pos - self.constants.ACTION_BAR_HEIGHT / 2,
-                    width,
-                    self.constants.ACTION_BAR_HEIGHT,
-                )
-            )
-
-            class MockDownNote:
-                def __init__(self, cell: int, width: int) -> None:
-                    self.note_type = NoteType.ADW
-                    self.cell = cell
-                    self.width = width
-
-            self._draw_air_arrow_head(
-                painter,
-                MockDownNote(curr_cell, curr_width),
+            rect = QRectF(
                 x_pos,
-                y_pos,
+                y_pos - self.constants.ACTION_BAR_HEIGHT / 2,
                 width,
-                self.colors.air_down,
+                self.constants.ACTION_BAR_HEIGHT,
             )
+            painter.setPen(QPen(control_color, 1.0))
+            painter.setBrush(QBrush(control_color))
+            painter.drawRect(rect)
 
     def _draw_air_slide_arrow(
         self,
@@ -509,23 +466,10 @@ class AirRendererMixin(RendererMixinSupport):
         current_position: float,
         timeline: Any,
     ) -> None:
-        tick = timeline.note_tick(note)
-        chart = getattr(timeline, "chart", None)
-        if chart is not None:
-            for existing in chart.notes:
-                if existing is note:
-                    continue
-                if existing.note_type not in AIR_ARROW_NOTES:
-                    continue
-                if (
-                    timeline.note_tick(existing) == tick
-                    and existing.cell == note.cell
-                    and existing.width == note.width
-                ):
-                    return
-        x_pos = self.projection.x(float(note.cell))
-        width = self.projection.w(float(note.width))
-        y_pos = self.projection.y(timeline.note_abs_pos(note), current_position)
+        rect = self._air_anchor_rect(note, current_position, timeline)
+        x_pos = rect.x()
+        width = rect.width()
+        y_pos = rect.center().y()
 
         class _AirSlideArrowNote:
             def __init__(self) -> None:
@@ -601,7 +545,7 @@ class AirRendererMixin(RendererMixinSupport):
         current_position: float,
         timeline: Any,
     ) -> None:
-        anchor = timeline.note_anchor(note)
+        anchor = getattr(note, "parent", None)
         if anchor is not None:
             cell = getattr(anchor, "end_cell", anchor.cell)
             width = getattr(anchor, "end_width", anchor.width)
@@ -641,30 +585,14 @@ class AirRendererMixin(RendererMixinSupport):
                 painter.setBrush(QBrush(fill_color))
                 painter.drawRoundedRect(rect, radius, radius)
                 continue
-            if not self._air_slide_step_draws_bar(index, step_count, step):
-                continue
-            NOTE_DEBUG.debug("  air_step_bar: step=%d/%d %s cell=%s w=%s pos=%.4f",
-                             index, step_count, step.note_type.value,
-                             step.end_cell, step.end_width, abs_pos)
-            self._draw_air_bar_at(
-                step.end_cell,
-                step.end_width,
-                abs_pos,
-                painter,
-                current_position,
-            )
-
-    def _air_slide_step_draws_bar(
-        self,
-        index: int,
-        step_count: int,
-        step: Any,
-    ) -> bool:
-        # ASD starts the chain and the final segment gets the purple action bar.
-        # ASC gets a transparent grey control-point rect (like SLC).
-        # The last step always gets a purple action bar regardless of type.
-        return step.note_type == NoteType.ASD or index == step_count - 1
-
+            if index == step_count - 1:
+                self._draw_air_bar_at(
+                    step.end_cell,
+                    step.end_width,
+                    abs_pos,
+                    painter,
+                    current_position,
+                )
     def _air_slide_step_is_control_point(self, step: Any) -> bool:
         """ASC steps that aren't the chain's last step draw as control points."""
         return step.note_type == NoteType.ASC
@@ -681,7 +609,7 @@ class AirRendererMixin(RendererMixinSupport):
             cell = note.cell
             width = note.width
         else:
-            anchor = timeline.note_anchor(note)
+            anchor = getattr(note, "parent", None)
             if anchor:
                 abs_pos = timeline.note_abs_end_pos(anchor)
                 cell = getattr(anchor, "end_cell", anchor.cell)

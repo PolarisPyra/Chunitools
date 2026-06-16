@@ -48,24 +48,23 @@ AIR_WRAPPED_EX_HEAD_TYPES = {NoteType.CHR, NoteType.HXD, NoteType.SXD, NoteType.
 
 
 class PlayViewSupportNotesMixin:
+    def _air_endpoint_candidates(self) -> tuple[Note, ...]:
+        candidates: list[Note] = []
+        for note in self._notes:
+            candidates.append(note)
+            candidates.extend(getattr(note, "steps", ()))
+        return tuple(candidates)
+
     def _is_note_or_step_of(self, note: Note, candidate: Note) -> bool:
         if candidate is note:
             return True
         return candidate in getattr(note, "steps", ())
 
-    def _air_endpoint_target_names(self, note: Note) -> set[str]:
-        if note.note_type in {NoteType.HLD, NoteType.HXD}:
-            return {"HLD", "HXD"}
-        if note.note_type in {NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC}:
-            return {"SLD", "SLC", "SXD", "SXC"}
-        return {note.note_type.value}
-
     def _air_replaces_endpoint(self, note: Note, tick: int, cell: float, width: float) -> bool:
         if not self.chart:
             return False
         timeline = self.chart.timeline
-        target_names = self._air_endpoint_target_names(note)
-        for candidate in self._notes:
+        for candidate in self._air_endpoint_candidates():
             if candidate.note_type not in {
                 NoteType.AIR,
                 NoteType.AUR,
@@ -75,16 +74,14 @@ class PlayViewSupportNotesMixin:
                 NoteType.ADL,
                 NoteType.AHD,
                 NoteType.AHX,
+                NoteType.ASD,
+                NoteType.ASC,
             }:
                 continue
             if timeline.note_tick(candidate) != tick:
                 continue
-            anchor = timeline.note_anchor(candidate)
+            anchor = getattr(candidate, "parent", None)
             if anchor is not None and self._is_note_or_step_of(note, anchor):
-                return True
-            if getattr(candidate, "target_note", "") not in target_names:
-                continue
-            if anchor is None and candidate.cell == cell and candidate.width == width:
                 return True
         return False
 

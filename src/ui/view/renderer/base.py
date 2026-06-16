@@ -1,16 +1,9 @@
 from __future__ import annotations
 
 import logging
-
-NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from src.core.models import Chart
-    from src.ui.components.timeline_view.notes.support import SlidePathPoint
-    from src.ui.view.projection import ViewProjection
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
@@ -41,6 +34,13 @@ from src.ui.components.timeline_view.notes import (
 from src.ui.theme.color_profile import DEFAULT_COLOR_PROFILE, GradientColor
 from src.ui.theme.ui import TEXT_MEASURE, qt as theme_qt
 from src.ui.view import timeline_compat
+
+if TYPE_CHECKING:
+    from src.core.models import Chart
+    from src.ui.components.timeline_view.notes.support import SlidePathPoint
+    from src.ui.view.projection import ViewProjection
+
+NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 
 # Set up logging
 logger = logging.getLogger("chart_renderer")

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QMenu, QMenuBar
 
 from src.config import settings
 from src.core.const import NoteType
+from src.notes.display import note_type_display_name
 from src.ui.theme.notes import get_note_color
 
 if TYPE_CHECKING:
@@ -235,39 +236,39 @@ def create_menu_bar(window: MainWindow) -> None:  # noqa: PLR0915
     # --- Note Visibility Menu (Categorized) ---
     categories = {
         "Ground Notes": {
-            NoteType.TAP: "Tap",
-            NoteType.CHR: "Ex-Tap",
-            NoteType.FLK: "Flick",
-            NoteType.MNE: "Mine",
+            NoteType.TAP: note_type_display_name(NoteType.TAP),
+            NoteType.CHR: note_type_display_name(NoteType.CHR),
+            NoteType.FLK: note_type_display_name(NoteType.FLK),
+            NoteType.MNE: note_type_display_name(NoteType.MNE),
         },
         "Hold Notes": {
-            NoteType.HLD: "Hold",
-            NoteType.HXD: "Ex-Hold",
+            NoteType.HLD: note_type_display_name(NoteType.HLD),
+            NoteType.HXD: note_type_display_name(NoteType.HXD),
         },
         "Slide Notes": {
-            NoteType.SLD: "Slide",
-            NoteType.SLC: "Slide Control",
-            NoteType.SXD: "Ex-Slide",
-            NoteType.SXC: "Ex-Slide Control",
+            NoteType.SLD: note_type_display_name(NoteType.SLD),
+            NoteType.SLC: note_type_display_name(NoteType.SLC),
+            NoteType.SXD: note_type_display_name(NoteType.SXD),
+            NoteType.SXC: note_type_display_name(NoteType.SXC),
         },
         "Air Arrows": {
-            NoteType.AIR: "Air",
-            NoteType.AUR: "Air Up-Right",
-            NoteType.AUL: "Air Up-Left",
-            NoteType.ADW: "Air Down",
-            NoteType.ADR: "Air Down-Right",
-            NoteType.ADL: "Air Down-Left",
+            NoteType.AIR: note_type_display_name(NoteType.AIR),
+            NoteType.AUR: note_type_display_name(NoteType.AUR),
+            NoteType.AUL: note_type_display_name(NoteType.AUL),
+            NoteType.ADW: note_type_display_name(NoteType.ADW),
+            NoteType.ADR: note_type_display_name(NoteType.ADR),
+            NoteType.ADL: note_type_display_name(NoteType.ADL),
         },
         "Air Holds": {
-            NoteType.AHD: "Air Hold",
-            NoteType.AHX: "Air Hold Action",
+            NoteType.AHD: note_type_display_name(NoteType.AHD),
+            NoteType.AHX: note_type_display_name(NoteType.AHX),
         },
         "Air Slides": {
-            NoteType.ASD: "Air Slide",
-            NoteType.ASC: "Air Slide Control",
+            NoteType.ASD: note_type_display_name(NoteType.ASD),
+            NoteType.ASC: note_type_display_name(NoteType.ASC),
         },
-        "Air Crush / Trace": {
-            NoteType.ALD: "Air Crush / Trace",
+        "Air Crush": {
+            NoteType.ALD: note_type_display_name(NoteType.ALD),
         },
     }
 

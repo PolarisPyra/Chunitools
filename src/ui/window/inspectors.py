@@ -5,19 +5,23 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from src.core.const import NoteType, RenderRole
+from src.notes import AirSlideStart, Note, Slide
+from src.notes.display import note_type_short_name
 from src.notes.schema import NOTE_SCHEMAS
 
 if TYPE_CHECKING:
     from src.core.models import Chart
-from src.notes import AirSlideStart, Note, Slide
 
 _AIR_DIRECTION_BEHAVIOR = {
-    NoteType.AIR: "AIR UP",
-    NoteType.AUR: "AIR UP-RIGHT",
-    NoteType.AUL: "AIR UP-LEFT",
-    NoteType.ADW: "AIR DOWN",
-    NoteType.ADR: "AIR DOWN-RIGHT",
-    NoteType.ADL: "AIR DOWN-LEFT",
+    note_type: note_type_short_name(note_type)
+    for note_type in (
+        NoteType.AIR,
+        NoteType.AUR,
+        NoteType.AUL,
+        NoteType.ADW,
+        NoteType.ADR,
+        NoteType.ADL,
+    )
 }
 
 _NOTE_COLORS: dict[NoteType, str] = {
@@ -63,39 +67,29 @@ def format_render_behavior(note: Note, chart: Chart | None = None) -> str:  # no
 
     role = timeline.note_render_role(note) if timeline else None
     abs_pos = timeline.note_abs_pos(note) if timeline else 0.0
-    anchor = timeline.note_anchor(note) if timeline else None
+    anchor = getattr(note, "parent", None)
 
     behavior_map = {
         NoteType.TAP: "TAP",
-        NoteType.CHR: "EX TAP",
+        NoteType.CHR: "EXTAP",
         NoteType.FLK: "FLICK",
-        NoteType.MNE: "MINE",
+        NoteType.MNE: "DAMAGE",
         NoteType.HLD: "HOLD",
-        NoteType.HXD: "EX HOLD",
+        NoteType.HXD: "HOLD",
         NoteType.AHD: "AIR HOLD",
-        NoteType.AHX: "AIR HOLD ACTION",
+        NoteType.AHX: "AIR CRUSH CONTROL",
     }
 
     if note_type in behavior_map:
         behavior = behavior_map[note_type]
-    elif note_type == NoteType.SLC:
-        behavior = "SLIDE" if role == RenderRole.HEAD else "SLIDE CONTROL POINT"
-    elif note_type == NoteType.SXC:
-        behavior = "SLIDE (EX)" if role == RenderRole.HEAD else "SLIDE CONTROL POINT (EX)"
-    elif note_type == NoteType.SLD:
-        behavior = "SLIDE"
-    elif note_type == NoteType.SXD:
-        behavior = "SLIDE (EX)"
+    elif note_type in {NoteType.SLC, NoteType.SXC}:
+        behavior = "SLIDE BEGIN" if role == RenderRole.HEAD else "SLIDE CONTROL"
+    elif note_type in {NoteType.SLD, NoteType.SXD}:
+        behavior = "SLIDE BEGIN"
     elif note_type in {NoteType.ASD, NoteType.ASC}:
-        behavior = "AIR SLIDE" if note_type == NoteType.ASD else "AIR SLIDE CONTROL"
+        behavior = "AIR SLIDE"
     elif note_type == NoteType.ALD:
-        color = getattr(note, "color", "")
-        if color == "NON":
-            behavior = "AIR ACTION / AIR CRUSH"
-        elif color == "DEF":
-            behavior = "AIR TRACE"
-        else:
-            behavior = "AIR TRACE / EFFECT"
+        behavior = "AIR CRUSH"
     elif note_type in _AIR_DIRECTION_BEHAVIOR:
         behavior = _AIR_DIRECTION_BEHAVIOR[note_type]
     else:
@@ -210,7 +204,6 @@ def _format_timeline(notes: list[Note], chart: Chart) -> str:
 
     for i, note in enumerate(sorted_notes):
         color = _NOTE_COLORS.get(note.note_type, "#888888")
-        label = note.note_type.value
 
         # Build detail fields
         details = [
@@ -227,30 +220,7 @@ def _format_timeline(notes: list[Note], chart: Chart) -> str:
             details.append(f'\u2192{end_cell}')
 
         # Determine type display name
-        display_map = {
-            NoteType.TAP: "TAP",
-            NoteType.CHR: "EX",
-            NoteType.FLK: "FLICK",
-            NoteType.MNE: "MINE",
-            NoteType.HLD: "HOLD",
-            NoteType.HXD: "EX HOLD",
-            NoteType.SLD: "SLIDE",
-            NoteType.SLC: "CTRL",
-            NoteType.SXD: "EX SLIDE",
-            NoteType.SXC: "EX CTRL",
-            NoteType.AIR: "AIR",
-            NoteType.AUR: "AIR/R",
-            NoteType.AUL: "AIR/L",
-            NoteType.ADW: "AIR DW",
-            NoteType.ADR: "AIR DR",
-            NoteType.ADL: "AIR DL",
-            NoteType.AHD: "A HOLD",
-            NoteType.AHX: "A ACT",
-            NoteType.ALD: "A CRUSH",
-            NoteType.ASD: "A SLIDE",
-            NoteType.ASC: "A CTRL",
-        }
-        display = display_map.get(note.note_type, label)
+        display = note_type_short_name(note.note_type)
 
         # Connector row between blocks
         if i > 0:
