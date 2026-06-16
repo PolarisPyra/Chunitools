@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.app import bootstrap
+from src import bootstrap
 from src.bootstrap import (
     BOOTSTRAP_ONLY_ENV,
     BOOTSTRAP_ONLY_VALUE,

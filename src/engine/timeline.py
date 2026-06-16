@@ -83,24 +83,23 @@ SLIDE_CHAIN_TYPES: frozenset[NoteType] = frozenset(
     }
 )
 CONTROL_POINT_TYPES: frozenset[NoteType] = frozenset(
-    {NoteType.SLC, NoteType.SXC, NoteType.ASC, NoteType.ASX}
+    {NoteType.SLC, NoteType.SXC, NoteType.ASC}
 )
 TARGET_NOTE_FAMILIES: dict[NoteType, frozenset[NoteType]] = {
     NoteType.HLD: frozenset({NoteType.HLD, NoteType.HXD}),
     NoteType.SLD: frozenset({NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}),
-    NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
-    NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
-    NoteType.ASX: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
+    NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC}),
+    NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC}),
 }
 AIR_ANCHOR_TYPES: frozenset[NoteType] = AIR_NOTE_TYPES - {NoteType.ALD}
 AIR_PATH_TYPES: frozenset[NoteType] = frozenset(
-    {NoteType.AHD, NoteType.ASD, NoteType.ASC, NoteType.ASX, NoteType.AHX}
+    {NoteType.AHD, NoteType.ASD, NoteType.ASC, NoteType.AHX}
 )
 """Note types that create active sustained paths in the air region."""
 GROUND_SLIDE_TYPES: frozenset[NoteType] = frozenset(
     {NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}
 )
-AIR_SLIDE_TYPES: frozenset[NoteType] = frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX})
+AIR_SLIDE_TYPES: frozenset[NoteType] = frozenset({NoteType.ASD, NoteType.ASC})
 BEATS_PER_MEASURE = 4.0
 
 

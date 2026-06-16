@@ -42,6 +42,7 @@ def _configure_logging() -> None:
     root_logger.addHandler(debug_handler)
 
     dedicated_loggers = {
+        "chartloading": "chartloading.log",
         "ui.3dview": "3dview.log",
         "ui.timelineview": "timeline_rendering_performance.log",
     }

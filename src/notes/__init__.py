@@ -25,7 +25,6 @@ from src.notes.base import (
     clamp_note_geometry,
     parse_note_head,
 )
-from src.notes.effects import AirSolid, HeavenHold
 from src.notes.flick import Flick
 from src.notes.hold import Hold
 from src.notes.schema import NOTE_SCHEMAS
@@ -41,13 +40,10 @@ _NOTE_CLASSES: dict[str, type[Note]] = {
     "AIR": Air, "AUR": Air, "AUL": Air, "ADW": Air, "ADR": Air, "ADL": Air,
     "AHD": AirHoldStart, "AHX": AirHold,
     "ALD": CrashSlide,
-    "ASD": AirSlide, "ASC": AirSlide, "ASX": AirSlide,
-    "ASO": AirSolid,
-    "HHD": HeavenHold, "HHX": HeavenHold,
+    "ASD": AirSlide, "ASC": AirSlide,
 }
 
-# Buildable types (some are parse-only, like ASX which is parsed as AirSlide but
-# never created from the editor)
+# Buildable note types exposed by the editor.
 _BUILDABLE: dict[str, type[Note]] = {
     "TAP": Tap, "CHR": ExTap, "FLK": Flick, "MNE": Mine,
     "HLD": Hold, "HXD": Hold,
@@ -56,8 +52,6 @@ _BUILDABLE: dict[str, type[Note]] = {
     "AHD": AirHoldStart, "AHX": AirHold,
     "ALD": CrashSlide,
     "ASD": AirSlideStart, "ASC": AirSlideStart,
-    "ASO": AirSolid,
-    "HHD": HeavenHold, "HHX": HeavenHold,
 }
 
 PARSER_NOTE_TYPES: frozenset = frozenset(_NOTE_CLASSES)
@@ -70,24 +64,22 @@ SCHEMA_NOTE_TYPES: frozenset = frozenset(NOTE_SCHEMAS)
 
 
 class NoteCategory(str, Enum):
-    """Categories matching the CHUNITHM engine classification."""
+    """Categories matching the supported CHUNITHM C2S model."""
 
     GROUND = "ground"
-    CRUSH = "crush"
+    EX_TAP = "ex_tap"
     FLICK = "flick"
     HOLD = "hold"
     SLIDE = "slide"
     AIR_ARROW = "air_arrow"
     AIR_HOLD = "air_hold"
     AIR_SLIDE = "air_slide"
-    AIR_TRACE = "air_trace"
-    AIR_SOLID = "air_solid"
-    HEAVEN = "heaven"
+    AIR_CRUSH = "air_crush"
 
 
 _NOTE_CATEGORIES: dict[str, NoteCategory] = {
     "TAP": NoteCategory.GROUND,
-    "CHR": NoteCategory.CRUSH,
+    "CHR": NoteCategory.EX_TAP,
     "FLK": NoteCategory.FLICK,
     "MNE": NoteCategory.GROUND,
     "HLD": NoteCategory.HOLD,
@@ -104,13 +96,9 @@ _NOTE_CATEGORIES: dict[str, NoteCategory] = {
     "ADL": NoteCategory.AIR_ARROW,
     "AHD": NoteCategory.AIR_HOLD,
     "AHX": NoteCategory.AIR_HOLD,
-    "ALD": NoteCategory.AIR_TRACE,
+    "ALD": NoteCategory.AIR_CRUSH,
     "ASD": NoteCategory.AIR_SLIDE,
     "ASC": NoteCategory.AIR_SLIDE,
-    "ASX": NoteCategory.AIR_SLIDE,
-    "ASO": NoteCategory.AIR_SOLID,
-    "HHD": NoteCategory.HEAVEN,
-    "HHX": NoteCategory.HEAVEN,
 }
 
 
@@ -121,17 +109,16 @@ def _notes(cat: NoteCategory) -> frozenset:
 GROUND_NOTE_TYPES = (
     _notes(NoteCategory.GROUND) | _notes(NoteCategory.HOLD)
     | _notes(NoteCategory.SLIDE) | _notes(NoteCategory.FLICK)
+    | _notes(NoteCategory.EX_TAP)
 )
-CRUSH_NOTE_TYPES = _notes(NoteCategory.CRUSH)
+EXTAP_NOTE_TYPES = _notes(NoteCategory.EX_TAP)
 FLICK_NOTE_TYPES = _notes(NoteCategory.FLICK)
 HOLD_NOTE_TYPES = _notes(NoteCategory.HOLD)
 SLIDE_NOTE_TYPES = _notes(NoteCategory.SLIDE)
 AIR_ARROW_NOTE_TYPES = _notes(NoteCategory.AIR_ARROW)
 AIR_HOLD_NOTE_TYPES = _notes(NoteCategory.AIR_HOLD)
 AIR_SLIDE_NOTE_TYPES = _notes(NoteCategory.AIR_SLIDE)
-AIR_TRACE_NOTE_TYPES = _notes(NoteCategory.AIR_TRACE)
-AIR_SOLID_NOTE_TYPES = _notes(NoteCategory.AIR_SOLID)
-HEAVEN_NOTE_TYPES = _notes(NoteCategory.HEAVEN)
+AIR_CRUSH_NOTE_TYPES = _notes(NoteCategory.AIR_CRUSH)
 
 
 # ── Public API ──────────────────────────────────────────────────────────────
@@ -190,15 +177,15 @@ def build_editor_note(  # noqa: PLR0913
 __all__ = [
     # Note classes
     "Note", "Tap", "ExTap", "Mine", "Hold", "Slide", "SlideTo",
-    "Flick", "AirSolid", "HeavenHold",
+    "Flick",
     "Air", "AirHoldStart", "AirHold", "CrashSlide", "AirSlideStart", "AirSlide",
     # Construction
     "parse_note", "build_editor_note", "clamp_note_geometry", "parse_note_head",
     # Categories
-    "GROUND_NOTE_TYPES", "CRUSH_NOTE_TYPES", "FLICK_NOTE_TYPES",
+    "GROUND_NOTE_TYPES", "EXTAP_NOTE_TYPES", "FLICK_NOTE_TYPES",
     "HOLD_NOTE_TYPES", "SLIDE_NOTE_TYPES",
     "AIR_ARROW_NOTE_TYPES", "AIR_HOLD_NOTE_TYPES", "AIR_SLIDE_NOTE_TYPES",
-    "AIR_TRACE_NOTE_TYPES", "AIR_SOLID_NOTE_TYPES", "HEAVEN_NOTE_TYPES",
+    "AIR_CRUSH_NOTE_TYPES",
     # Internal
     "PARSER_NOTE_TYPES", "PARSER_NOTE_TYPE_VALUES",
     "EDITOR_NOTE_TYPES", "SCHEMA_NOTE_TYPES",

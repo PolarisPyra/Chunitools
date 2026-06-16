@@ -213,59 +213,6 @@ NOTE_SCHEMAS: dict[NoteType, NoteSchema] = {
         ),
         ("RegisterNoteType", "export format ASC ... %s %3.1f %d %d %d %3.1f %s"),
     ),
-    NoteType.ASX: NoteSchema(
-        NoteType.ASX,
-        (
-            FieldSchema("target_note", NOTE, aliases=("wrapped_type",)),
-            FieldSchema("starting_height", FLOAT, aliases=("start_height",)),
-            FieldSchema("duration", INT),
-            FieldSchema("end_cell", INT),
-            FieldSchema("end_width", INT),
-            FieldSchema("target_height", FLOAT),
-            FieldSchema("color", STRING),
-        ),
-        ("parser compatibility; absent from recovered registry/export strings",),
-        parser_only=True,
-    ),
-    NoteType.ASO: NoteSchema(
-        NoteType.ASO,
-        (
-            FieldSchema("starting_height", FLOAT, aliases=("start_height",)),
-            FieldSchema("starting_depth", FLOAT, aliases=("start_depth",)),
-            FieldSchema("duration", INT),
-            FieldSchema("end_cell", INT),
-            FieldSchema("end_width", INT),
-            FieldSchema("target_height", FLOAT),
-            FieldSchema("target_depth", FLOAT),
-            FieldSchema("color", STRING),
-        ),
-        ("RegisterNoteType", "AirSolid export format"),
-    ),
-    NoteType.HHD: NoteSchema(
-        NoteType.HHD,
-        (
-            FieldSchema("starting_height", FLOAT, aliases=("start_height",)),
-            FieldSchema("duration", INT),
-            FieldSchema("end_cell", INT),
-            FieldSchema("end_width", INT),
-            FieldSchema("target_height", FLOAT),
-            FieldSchema("heaven_id", INT),
-        ),
-        ("RegisterNoteType",),
-    ),
-    NoteType.HHX: NoteSchema(
-        NoteType.HHX,
-        (
-            FieldSchema("starting_height", FLOAT, aliases=("start_height",)),
-            FieldSchema("duration", INT),
-            FieldSchema("end_cell", INT),
-            FieldSchema("end_width", INT),
-            FieldSchema("target_height", FLOAT),
-            FieldSchema("heaven_id", INT),
-            FieldSchema("animation", STRING, required=False),
-        ),
-        ("RegisterNoteType",),
-    ),
 }
 
 PLAYABLE_NOTE_TYPES: frozenset[NoteType] = frozenset(NOTE_SCHEMAS)

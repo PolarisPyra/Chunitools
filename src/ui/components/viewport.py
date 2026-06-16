@@ -974,9 +974,6 @@ class ChartViewport(QWidget):
             NoteType.SXC,
             NoteType.ASD,
             NoteType.ASC,
-            NoteType.ASO,
-            NoteType.HHD,
-            NoteType.HHX,
         }
 
     def _editor_uses_size_drag_placement(self) -> bool:
@@ -1072,9 +1069,6 @@ class ChartViewport(QWidget):
             NoteType.ASD,
             NoteType.ASC,
             NoteType.ALD,
-            NoteType.ASO,
-            NoteType.HHD,
-            NoteType.HHX,
         }:
             painter.drawLine(
                 QPointF(start_x + width / 2, start_y),

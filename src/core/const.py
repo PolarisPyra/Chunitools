@@ -10,7 +10,7 @@ class NoteType(str, enum.Enum):
     """Standard tap note."""
 
     CHR = "CHR"
-    """CRUSH / ExTap note (yellow/gold tap with double-hit mechanic)."""
+    """ExTap / TapEx note."""
 
     FLK = "FLK"
     """Flick note."""
@@ -68,20 +68,7 @@ class NoteType(str, enum.Enum):
     """Air slide control point — intermediate point along an air slide path."""
 
     AHX = "AHX"
-    """Air hold action — purple action bar attached along an air hold (AHD)."""
-
-    ASX = "ASX"
-    """Air slide action — the purple action bar at the end of an air slide (ASD/ASC chain)."""
-
-    ASO = "ASO"
-    """Air solid — colored solid path between the start lane/height and the
-    target lane/height of an air movement."""
-
-    HHD = "HHD"
-    """Heaven Hold."""
-
-    HHX = "HHX"
-    """Heaven ExHold."""
+    """Air hold action / alternate air-hold endpoint."""
 
 
 class Command(enum.Enum):
@@ -138,7 +125,7 @@ class AirColor(enum.Enum):
 
 
 class AirTraceColor(enum.Enum):
-    """Color types for ALD (Air Trace) notes."""
+    """Color types for ALD (Air Crush / Trace) notes."""
 
     GRY = "GRY"
     RED = "RED"
@@ -165,12 +152,13 @@ class RenderRole(enum.Enum):
     TAP = "tap"
 
 
-# ── Note-type groupings matching CHUNITHM game-engine categories ──────────
+# ── Note-type groupings matching the supported CHUNITHM C2S categories ─────
 
 # Ground-level notes that occupy the 16-lane playfield
 GROUND_NOTE_TYPES: frozenset[NoteType] = frozenset(
     {
         NoteType.TAP,
+        NoteType.CHR,
         NoteType.HLD,
         NoteType.HXD,
         NoteType.SLD,
@@ -182,8 +170,8 @@ GROUND_NOTE_TYPES: frozenset[NoteType] = frozenset(
     }
 )
 
-# CRUSH notes — the ExTap/gold-tap double-hit mechanic
-CRUSH_NOTE_TYPES: frozenset[NoteType] = frozenset({NoteType.CHR})
+# ExTap / TapEx notes.
+EXTAP_NOTE_TYPES: frozenset[NoteType] = frozenset({NoteType.CHR})
 
 # ── Air system groupings ───────────────────────────────────────────────────
 
@@ -202,18 +190,14 @@ AIR_ARROW_NOTES: frozenset[NoteType] = frozenset(
 AIR_HOLD_NOTES: frozenset[NoteType] = frozenset([NoteType.AHD, NoteType.AHX])
 """Air hold chain — a sustained position in the air + optional action bar."""
 
-AIR_SLIDE_NOTES: frozenset[NoteType] = frozenset([NoteType.ASD, NoteType.ASC, NoteType.ASX])
-"""Air slide chain — a sliding path in the air + optional action bar."""
+AIR_SLIDE_NOTES: frozenset[NoteType] = frozenset([NoteType.ASD, NoteType.ASC])
+"""Air slide chain — a sliding path in the air."""
 
-AIR_ACTION_NOTES: frozenset[NoteType] = frozenset([NoteType.AHX, NoteType.ASX])
-"""Air action notes — the purple action bars that appear at the end/along
-air holds (AHX) and air slides (ASX)."""
+AIR_ACTION_NOTES: frozenset[NoteType] = frozenset([NoteType.AHX])
+"""Air action notes represented directly by supported C2S."""
 
 AIR_TRACE_NOTES: frozenset[NoteType] = frozenset({NoteType.ALD})
-"""Air trace notes — ALD creates crushed/trace effects between air points."""
-
-AIR_SOLID_NOTES: frozenset[NoteType] = frozenset({NoteType.ASO})
-"""Air solid notes — the colored solid air path between start and target."""
+"""Air crush / trace notes represented by ALD."""
 
 # All air-related notes combined (useful for broad "is this air?" checks)
 AIR_NOTE_TYPES: frozenset[NoteType] = frozenset(
@@ -221,7 +205,6 @@ AIR_NOTE_TYPES: frozenset[NoteType] = frozenset(
     | set(AIR_HOLD_NOTES)
     | set(AIR_SLIDE_NOTES)
     | set(AIR_TRACE_NOTES)
-    | set(AIR_SOLID_NOTES)
 )
 
 # ── Other constants ────────────────────────────────────────────────────────
@@ -245,5 +228,3 @@ AIR_TRACE_COLORS: frozenset[str] = frozenset(
         "GRN",
     }
 )
-
-

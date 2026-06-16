@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 AIR_ACTION_DEBUG_ANCHOR_TYPES = frozenset(
-    {NoteType.ASD, NoteType.ASC, NoteType.AHD, NoteType.AHX, NoteType.ASX}
+    {NoteType.ASD, NoteType.ASC, NoteType.AHD, NoteType.AHX}
 )
 """Air notes whose debug label anchors to the *end* of the note (action bar)."""
 AIR_ARROW_DEBUG_LABEL_OFFSET = 44.0

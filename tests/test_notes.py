@@ -5,9 +5,9 @@ import pytest
 from src.core.const import NoteType
 from src.notes import (
     AIR_ARROW_NOTE_TYPES,
+    AIR_CRUSH_NOTE_TYPES,
     AIR_HOLD_NOTE_TYPES,
     AIR_SLIDE_NOTE_TYPES,
-    AIR_TRACE_NOTE_TYPES,
     EDITOR_NOTE_TYPES,
     PARSER_NOTE_TYPES,
     SLIDE_NOTE_TYPES,
@@ -16,11 +16,9 @@ from src.notes import (
     AirHoldStart,
     AirSlide,
     AirSlideStart,
-    AirSolid,
     CrashSlide,
     ExTap,
     Flick,
-    HeavenHold,
     Hold,
     Mine,
     Slide,
@@ -68,26 +66,6 @@ from src.notes.schema import NOTE_SCHEMAS, PLAYABLE_NOTE_TYPES
             AirSlide,
             "ASC\t1\t2\t3\t4\tASD\t1.0\t192\t5\t6\t2.0\tCYN",
         ),
-        (
-            "ASX\t1\t2\t3\t4\tASC\t1.0\t192\t5\t6\t2.0\tDEF",
-            AirSlide,
-            "ASX\t1\t2\t3\t4\tASC\t1.0\t192\t5\t6\t2.0\tDEF",
-        ),
-        (
-            "ASO\t1\t2\t3\t4\t1.0\t2.0\t192\t5\t6\t3.0\t4.0\tCYN",
-            AirSolid,
-            "ASO\t1\t2\t3\t4\t1.0\t2.0\t192\t5\t6\t3.0\t4.0\tCYN",
-        ),
-        (
-            "HHD\t1\t2\t3\t4\t1.0\t192\t5\t6\t2.0\t7",
-            HeavenHold,
-            "HHD\t1\t2\t3\t4\t1.0\t192\t5\t6\t2.0\t7",
-        ),
-        (
-            "HHX\t1\t2\t3\t4\t1.0\t192\t5\t6\t2.0\t7\tUP",
-            HeavenHold,
-            "HHX\t1\t2\t3\t4\t1.0\t192\t5\t6\t2.0\t7\tUP",
-        ),
     ],
 )
 def test_parse_note_serializes_with_existing_model_rules(
@@ -109,7 +87,7 @@ def test_parse_note_returns_none_for_malformed_lines(line: str) -> None:
 
 def test_parser_note_type_groups_match_current_c2s_parser_needs() -> None:
     assert {NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC} == SLIDE_NOTE_TYPES
-    assert {NoteType.ASD, NoteType.ASC, NoteType.ASX} == AIR_SLIDE_NOTE_TYPES
+    assert {NoteType.ASD, NoteType.ASC} == AIR_SLIDE_NOTE_TYPES
     assert {
         NoteType.AIR,
         NoteType.AUR,
@@ -119,9 +97,12 @@ def test_parser_note_type_groups_match_current_c2s_parser_needs() -> None:
         NoteType.ADL,
     } == AIR_ARROW_NOTE_TYPES
     assert {NoteType.AHD, NoteType.AHX} == AIR_HOLD_NOTE_TYPES
-    assert {NoteType.ALD} == AIR_TRACE_NOTE_TYPES
-    assert NoteType.ASX in PARSER_NOTE_TYPES
-    assert NoteType.ASX not in EDITOR_NOTE_TYPES
+    assert {NoteType.ALD} == AIR_CRUSH_NOTE_TYPES
+    assert "ASX" not in PARSER_NOTE_TYPES
+    assert "ASX" not in EDITOR_NOTE_TYPES
+    assert "ASO" not in PARSER_NOTE_TYPES
+    assert "HHD" not in PARSER_NOTE_TYPES
+    assert "HHX" not in PARSER_NOTE_TYPES
 
 
 def test_playable_note_types_have_schema_and_factory_entries() -> None:
@@ -180,9 +161,6 @@ def test_renamed_fields_keep_compatibility_aliases() -> None:
         (NoteType.ALD, CrashSlide),
         (NoteType.ASD, AirSlideStart),
         (NoteType.ASC, AirSlideStart),
-        (NoteType.ASO, AirSolid),
-        (NoteType.HHD, HeavenHold),
-        (NoteType.HHX, HeavenHold),
     ],
 )
 def test_build_editor_note_uses_existing_defaults(note_type: NoteType, expected_type: type) -> None:
@@ -205,9 +183,12 @@ def test_build_editor_note_uses_existing_defaults(note_type: NoteType, expected_
     assert note.width == 1
 
 
-def test_build_editor_note_rejects_parse_only_asx() -> None:
+def test_build_editor_note_rejects_unsupported_note_types() -> None:
     with pytest.raises(ValueError, match="Unsupported note type: ASX"):
-        build_editor_note(NoteType.ASX)
+        build_editor_note("ASX")
+    with pytest.raises(ValueError, match="Unsupported note type: ASO"):
+        build_editor_note("ASO")
+    assert parse_note("ASX", ["1", "2", "3", "4", "ASC", "1.0", "192", "5", "6", "2.0", "DEF"]) is None
 
 
 def test_clamp_note_geometry_preserves_editor_contract() -> None:

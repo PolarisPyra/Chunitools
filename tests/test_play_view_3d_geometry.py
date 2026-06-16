@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QApplication
 from src.core.const import NoteType
 from src.core.models import Chart, ChartMetadata
 from src.notes.air import Air, AirHold, AirHoldStart, AirSlide, AirSlideStart, CrashSlide
-from src.notes.effects import AirSolid, HeavenHold
 from src.notes.hold import Hold
 from src.notes.slide import Slide, SlideTo
 from src.notes.tap import ExTap, Tap
@@ -20,7 +19,9 @@ from src.ui.components.play_view import (
     ACTIVE_DEPTH_MAX,
     DRAW_DEPTH_MAX,
     DRAW_DEPTH_MIN,
+    FIELD_HALF,
     LANE_UNITS,
+    LANE_WIDTH,
     NOTE_WIDTH_FRAC,
     PIXELS_PER_UNIT,
     VISIBLE_DEPTH,
@@ -34,9 +35,11 @@ from src.ui.components.play_view import (
     _air_trace_world_y_from_g0,
     _chart_air_height_to_g0,
     _clip_air_path_start,
+    _compact_depth_to_z,
     _note_screen_span,
     _project_point,
     _projected_note_height,
+    _projected_polygon_is_bounded,
     _projection_for_depth,
     _scrubber_progress,
     _scrubber_target_measure,
@@ -137,6 +140,43 @@ def test_depth_projection_and_note_height_use_render_units() -> None:
     assert _projected_note_height(0.0, 1280.0, 720.0) == pytest.approx(61.953792)
 
 
+def test_3d_sustain_body_corners_stay_on_projected_lane_edges() -> None:
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    view = PlayView3D()
+    view.resize(1280, 720)
+    note = Hold(
+        note_type=NoteType.HLD,
+        measure=0,
+        offset=0,
+        cell=2,
+        width=3,
+        duration=384,
+    )
+
+    corners = view._project_sustain_corners(
+        note,
+        start_cell=2.0,
+        start_width=3.0,
+        start_depth=2.0,
+        end_cell=2.0,
+        end_width=3.0,
+        end_depth=8.0,
+    )
+
+    lane_left = 2.0 * LANE_WIDTH - FIELD_HALF
+    lane_right = 5.0 * LANE_WIDTH - FIELD_HALF
+    expected_points = [
+        _project_point(lane_left, 0.0, _compact_depth_to_z(2.0), 1280.0, 720.0),
+        _project_point(lane_right, 0.0, _compact_depth_to_z(2.0), 1280.0, 720.0),
+        _project_point(lane_right, 0.0, _compact_depth_to_z(8.0), 1280.0, 720.0),
+        _project_point(lane_left, 0.0, _compact_depth_to_z(8.0), 1280.0, 720.0),
+    ]
+    for corner, expected in zip(corners, expected_points, strict=True):
+        assert corner.x() == pytest.approx(expected[0])
+        assert corner.y() == pytest.approx(expected[1])
+
+
 def test_3d_ground_judge_line_is_gold_without_air_notes() -> None:
     app = QApplication.instance() or QApplication([])
     _ = app
@@ -208,12 +248,8 @@ def test_air_height_mapping_uses_g0_and_trace_units() -> None:
 def test_air_visual_widths_use_render_mesh_scale_table() -> None:
     vanish_x = WORLD_HALF * PIXELS_PER_UNIT
 
-    arrow_x, arrow_w = _air_arrow_screen_span(
-        cell=4.0, width=1.0, vanish_x=vanish_x, scale=1.0
-    )
-    path_x, path_w = _air_path_screen_span(
-        cell=4.0, width=1.0, vanish_x=vanish_x, scale=1.0
-    )
+    arrow_x, arrow_w = _air_arrow_screen_span(cell=4.0, width=1.0, vanish_x=vanish_x, scale=1.0)
+    path_x, path_w = _air_path_screen_span(cell=4.0, width=1.0, vanish_x=vanish_x, scale=1.0)
     wide_path_x, wide_path_w = _air_path_screen_span(
         cell=0.0, width=16.0, vanish_x=vanish_x, scale=1.0
     )
@@ -349,6 +385,7 @@ def test_air_slide_endpoint_bar_uses_trace_height_not_action_height(monkeypatch)
 
     action_bars: list[tuple[float, float]] = []
     monkeypatch.setattr(view, "_draw_tap_quad", lambda *args, **kwargs: None)
+    monkeypatch.setattr(view, "_draw_extap_quad", lambda *args, **kwargs: None)
     monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
     monkeypatch.setattr(
@@ -395,7 +432,7 @@ def test_air_slide_final_action_step_draws_one_3d_bar(monkeypatch) -> None:
     app = QApplication.instance() or QApplication([])
     _ = app
     step = AirSlide(
-        note_type=NoteType.ASX,
+        note_type=NoteType.ASC,
         measure=0,
         offset=0,
         cell=0,
@@ -489,9 +526,7 @@ def test_parented_asc_start_arrow_uses_ground_chr_anchor(monkeypatch) -> None:
     monkeypatch.setattr(
         view,
         "_draw_air_arrow",
-        lambda _painter, x, y, width, _scale, _color, _alpha, nt: drawn.append(
-            (x, y, width, nt)
-        ),
+        lambda _painter, x, y, width, _scale, _color, _alpha, nt: drawn.append((x, y, width, nt)),
     )
 
     vanish_x = 640.0
@@ -565,6 +600,7 @@ def test_parented_asc_chain_does_not_draw_floating_end_cap(monkeypatch) -> None:
     tap_quads: list[object] = []
     action_bars: list[tuple[float, float]] = []
     monkeypatch.setattr(view, "_draw_tap_quad", lambda *args: tap_quads.append(args))
+    monkeypatch.setattr(view, "_draw_extap_quad", lambda *args: tap_quads.append(args))
     monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
     monkeypatch.setattr(
@@ -624,9 +660,7 @@ def test_ahd_hold_draws_vertical_lift_from_ground_anchor(monkeypatch) -> None:
     monkeypatch.setattr(
         view,
         "_draw_air_lift_connector",
-        lambda _painter, _x, y_bottom, y_top, w, *_args: lifts.append(
-            (y_bottom, y_top, w)
-        ),
+        lambda _painter, _x, y_bottom, y_top, w, *_args: lifts.append((y_bottom, y_top, w)),
     )
 
     view._draw_air_hold_segment(
@@ -738,9 +772,7 @@ def test_ahd_start_arrow_uses_ground_anchor(monkeypatch) -> None:
     monkeypatch.setattr(
         view,
         "_draw_air_arrow",
-        lambda _painter, x, y, width, _scale, _color, _alpha, nt: drawn.append(
-            (x, y, width, nt)
-        ),
+        lambda _painter, x, y, width, _scale, _color, _alpha, nt: drawn.append((x, y, width, nt)),
     )
 
     vanish_x = 640.0
@@ -811,8 +843,8 @@ def test_ahx_independent_hold_draws_green_lift_from_ground(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         view,
-        "_draw_sustain_body",
-        lambda _painter, *_args: bodies.append(_args[6]),
+        "_draw_projected_sustain_body",
+        lambda _painter, *_args, **_kwargs: bodies.append(_args[7]),
     )
     monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
     monkeypatch.setattr(view, "_draw_air_action_bar_3d", lambda *args: None)
@@ -866,8 +898,8 @@ def test_ahx_3d_dispatch_uses_green_sustain_and_start_arrow(monkeypatch) -> None
     monkeypatch.setattr(
         view,
         "_draw_air_hold_segment",
-        lambda _painter, _note, _x, _y, _w, _scale, color, _alpha, *_args, is_start: (
-            calls.append((color.rgba(), is_start))
+        lambda _painter, _note, _x, _y, _w, _scale, color, _alpha, *_args, is_start: calls.append(
+            (color.rgba(), is_start)
         ),
     )
 
@@ -967,9 +999,7 @@ def test_ahx_independent_start_arrow_uses_ground_anchor(monkeypatch) -> None:
     monkeypatch.setattr(
         view,
         "_draw_air_arrow",
-        lambda _painter, x, y, width, _scale, _color, _alpha, nt: drawn.append(
-            (x, y, width, nt)
-        ),
+        lambda _painter, x, y, width, _scale, _color, _alpha, nt: drawn.append((x, y, width, nt)),
     )
 
     vanish_x = 640.0
@@ -1115,6 +1145,11 @@ def test_timeline_anchored_chr_air_slide_does_not_draw_fake_start_cap(monkeypatc
     monkeypatch.setattr(
         view,
         "_draw_tap_quad",
+        lambda _painter, *_args, **_kwargs: drawn_caps.append(_args[6].note_type),
+    )
+    monkeypatch.setattr(
+        view,
+        "_draw_extap_quad",
         lambda _painter, *_args, **_kwargs: drawn_caps.append(_args[6].note_type),
     )
     monkeypatch.setattr(view, "_draw_air_lift_connector", lambda *args: None)
@@ -1352,6 +1387,86 @@ def test_play_view_3d_renders_synthetic_chart_offscreen() -> None:
     assert image.pixelColor(640, 650).alpha() > 0
 
 
+def test_projected_polygon_guard_rejects_screen_flash_geometry() -> None:
+    normal = [
+        QPointF(249.0, 108.0),
+        QPointF(1031.0, 108.0),
+        QPointF(1031.0, 664.0),
+        QPointF(249.0, 664.0),
+    ]
+    exploding = [
+        QPointF(-20000.0, -20000.0),
+        QPointF(20000.0, -20000.0),
+        QPointF(20000.0, 20000.0),
+        QPointF(-20000.0, 20000.0),
+    ]
+
+    assert _projected_polygon_is_bounded(normal, 1280.0, 720.0)
+    assert not _projected_polygon_is_bounded(exploding, 1280.0, 720.0)
+
+
+def test_play_view_3d_skips_exploding_air_crush_body_polygon(monkeypatch) -> None:
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    view = PlayView3D()
+    view.resize(1280, 720)
+    note = CrashSlide(
+        note_type=NoteType.ALD,
+        measure=0,
+        offset=0,
+        cell=4,
+        width=4,
+        crush_interval=0,
+        starting_height=1.0,
+        duration=192,
+        end_cell=8,
+        end_width=4,
+        target_height=5.0,
+        color="RED",
+    )
+    calls: list[str] = []
+
+    class FakePainter:
+        def setPen(self, *_args) -> None:
+            calls.append("pen")
+
+        def setBrush(self, *_args) -> None:
+            calls.append("brush")
+
+        def drawPolygon(self, *_args) -> None:
+            calls.append("polygon")
+
+        def drawLine(self, *_args) -> None:
+            calls.append("line")
+
+    monkeypatch.setattr(
+        view,
+        "_project_sustain_corners",
+        lambda *_args, **_kwargs: [
+            QPointF(-20000.0, -20000.0),
+            QPointF(20000.0, -20000.0),
+            QPointF(20000.0, 20000.0),
+            QPointF(-20000.0, 20000.0),
+        ],
+    )
+
+    view._draw_projected_sustain_body(
+        FakePainter(),
+        note,
+        4.0,
+        4.0,
+        0.0,
+        8.0,
+        4.0,
+        8.0,
+        QColor("#ff0000"),
+        255,
+    )
+
+    assert "polygon" not in calls
+    assert "line" not in calls
+
+
 def test_play_view_3d_draws_ald_crush_markers_from_crush_interval(monkeypatch) -> None:
     app = QApplication.instance() or QApplication([])
     _ = app
@@ -1459,7 +1574,7 @@ def test_play_view_keeps_crossing_sustains_but_culls_past_taps(monkeypatch) -> N
     )
     monkeypatch.setattr(
         view,
-        "_draw_sustain_body",
+        "_draw_projected_sustain_body",
         lambda *args, **kwargs: drawn_bodies.append(args),
     )
     image = QImage(QSize(1280, 720), QImage.Format.Format_ARGB32_Premultiplied)
@@ -1514,34 +1629,6 @@ def test_play_view_clips_crossing_air_paths_to_judge_line(
                 width=2,
                 steps=(step,),
             ),
-            AirSolid(
-                note_type=NoteType.ASO,
-                measure=0,
-                offset=0,
-                cell=8,
-                width=2,
-                starting_height=1.0,
-                starting_depth=0.0,
-                duration=384,
-                end_cell=10,
-                end_width=2,
-                target_height=5.0,
-                target_depth=0.0,
-                color="DEF",
-            ),
-            HeavenHold(
-                note_type=NoteType.HHD,
-                measure=0,
-                offset=0,
-                cell=10,
-                width=2,
-                starting_height=1.0,
-                duration=384,
-                end_cell=12,
-                end_width=2,
-                target_height=5.0,
-                heaven_id=1,
-            ),
         ],
     )
     view = PlayView3D()
@@ -1572,3 +1659,159 @@ def test_play_view_clips_crossing_air_paths_to_judge_line(
     assert any(depth == pytest.approx(0.0) for depth in projected_depths)
     assert any(depth > 0.0 for depth in projected_depths)
     assert all(depth > DRAW_DEPTH_MIN for depth in head_depths)
+
+
+def test_3d_parsed_air_slide_wrapped_heads_dispatch_as_wrapped_ground_types(
+    monkeypatch,
+) -> None:
+    from src.core.metadata import parse_c2s
+
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    chart = parse_c2s(
+        "\n".join(
+            [
+                "ASD\t0\t0\t0\t1\tTAP\t1.0\t24\t0\t1\t1.0\tDEF",
+                "ASD\t0\t24\t1\t1\tSLD\t1.0\t24\t1\t1\t1.0\tDEF",
+                "ASD\t0\t48\t2\t1\tCHR\t1.0\t24\t2\t1\t1.0\tDEF",
+                "ASD\t0\t72\t3\t1\tFLK\t1.0\t24\t3\t1\t1.0\tDEF",
+                "ASD\t0\t96\t4\t1\tMNE\t1.0\t24\t4\t1\t1.0\tDEF",
+                "ASD\t0\t120\t5\t1\tHLD\t1.0\t24\t5\t1\t1.0\tDEF",
+                "ASD\t0\t144\t6\t1\tHXD\t1.0\t24\t6\t1\t1.0\tDEF",
+                "ASD\t0\t168\t7\t1\tSLC\t1.0\t24\t7\t1\t1.0\tDEF",
+                "ASD\t0\t192\t8\t1\tSXC\t1.0\t24\t8\t1\t1.0\tDEF",
+            ]
+        )
+    )
+    view = PlayView3D()
+    view.resize(1280, 720)
+    view.draw_chart(chart)
+    taps: list[NoteType] = []
+    extaps: list[NoteType] = []
+    flicks: list[NoteType] = []
+    mines: list[str] = []
+
+    monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_action_bar_3d", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_lift_if_needed", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
+    monkeypatch.setattr(
+        view,
+        "_draw_tap_quad",
+        lambda painter, x, y, w, scale, color, alpha, note, depth, cell=None, width=None: (
+            taps.append(note.note_type)
+        ),
+    )
+    monkeypatch.setattr(
+        view,
+        "_draw_extap_quad",
+        lambda painter, x, y, w, scale, color, alpha, note, depth, cell=None, width=None: (
+            extaps.append(note.note_type)
+        ),
+    )
+    monkeypatch.setattr(
+        view,
+        "_draw_flick",
+        lambda painter, x, y, w, scale, color, alpha, note, depth, cell=None, width=None: (
+            flicks.append(note.note_type)
+        ),
+    )
+    monkeypatch.setattr(view, "_draw_mine", lambda *args: mines.append("mine"))
+
+    for note in chart.notes:
+        view._draw_note(
+            None,
+            note,
+            0.0,
+            0.0,
+            1.0,
+            1.0,
+            255,
+            chart.timeline.time_at(0),
+            1.0,
+            2.0,
+            640.0,
+            72.0,
+            648.0,
+        )
+
+    assert taps == [NoteType.TAP, NoteType.SLD, NoteType.HLD, NoteType.SLC]
+    assert extaps == [NoteType.CHR, NoteType.HXD, NoteType.SXC]
+    assert flicks == [NoteType.FLK]
+    assert mines == ["mine"]
+
+
+def test_3d_chained_air_slide_wrapped_heads_dispatch_each_step_wrapped_type(
+    monkeypatch,
+) -> None:
+    from src.core.metadata import parse_c2s
+    from src.notes.air import AirSlideStart
+
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    chart = parse_c2s(
+        "\n".join(
+            [
+                "ASD\t0\t0\t0\t1\tTAP\t1.0\t24\t1\t1\t1.0\tDEF",
+                "ASC\t0\t24\t1\t1\tCHR\t1.0\t24\t2\t1\t1.0\tDEF",
+                "ASC\t0\t48\t2\t1\tFLK\t1.0\t24\t3\t1\t1.0\tDEF",
+                "ASC\t0\t72\t3\t1\tSLC\t1.0\t24\t4\t1\t1.0\tDEF",
+            ]
+        )
+    )
+    chains = [note for note in chart.notes if isinstance(note, AirSlideStart)]
+    view = PlayView3D()
+    view.resize(1280, 720)
+    view.draw_chart(chart)
+    taps: list[NoteType] = []
+    extaps: list[NoteType] = []
+    flicks: list[NoteType] = []
+
+    assert len(chains) == 1
+    assert [step.target_note for step in chains[0].steps] == ["TAP", "CHR", "FLK", "SLC"]
+
+    monkeypatch.setattr(view, "_draw_air_path_line", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_action_bar_3d", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_lift_if_needed", lambda *args: None)
+    monkeypatch.setattr(view, "_draw_air_start_arrow_if_needed", lambda *args: None)
+    monkeypatch.setattr(
+        view,
+        "_draw_tap_quad",
+        lambda painter, x, y, w, scale, color, alpha, note, depth, cell=None, width=None: (
+            taps.append(note.note_type)
+        ),
+    )
+    monkeypatch.setattr(
+        view,
+        "_draw_extap_quad",
+        lambda painter, x, y, w, scale, color, alpha, note, depth, cell=None, width=None: (
+            extaps.append(note.note_type)
+        ),
+    )
+    monkeypatch.setattr(
+        view,
+        "_draw_flick",
+        lambda painter, x, y, w, scale, color, alpha, note, depth, cell=None, width=None: (
+            flicks.append(note.note_type)
+        ),
+    )
+
+    view._draw_note(
+        None,
+        chains[0],
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        255,
+        chart.timeline.time_at(0),
+        1.0,
+        2.0,
+        640.0,
+        72.0,
+        648.0,
+    )
+
+    assert taps == [NoteType.TAP, NoteType.SLC]
+    assert extaps == [NoteType.CHR]
+    assert flicks == [NoteType.FLK]

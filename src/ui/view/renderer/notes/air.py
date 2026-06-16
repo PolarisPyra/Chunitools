@@ -255,7 +255,7 @@ class AirRendererMixin(RendererMixinSupport):
         if not self.visible_note_types.get(note.note_type.value, True):
             return
         # Debug outline for standalone ASC/ASD wrappers
-        if self.debug_active and note.note_type in (NoteType.ASD, NoteType.ASC, NoteType.ASX):
+        if self.debug_active and note.note_type in (NoteType.ASD, NoteType.ASC):
             self._draw_air_wrapper_debug_outline(painter, note, current_position, timeline)
         ys = self.projection.y(timeline.note_abs_pos(note), current_position)
         ye = self.projection.y(timeline.note_abs_end_pos(note), current_position)
@@ -355,27 +355,6 @@ class AirRendererMixin(RendererMixinSupport):
         )
         self._draw_bezier_line(painter, QPointF(xs + ws / 2, ys), QPointF(xe + we / 2, ye))
 
-    def _draw_air_solid_background(
-        self,
-        painter: QPainter,
-        note: Any,
-        current_position: float,
-        timeline: Any,
-    ) -> None:
-        if not self.visible_note_types.get(note.note_type.value, True):
-            return
-        start, end = self._air_path_endpoints(note, current_position, timeline)
-        color = self._air_base_note_color(note)
-        fill = QColor(color)
-        fill.setAlpha(54)
-        painter.setPen(QPen(color, self.constants.AIR_PATH_WIDTH * 2.5))
-        painter.drawLine(start, end)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(fill))
-        radius = max(4.0, self.projection.w(float(note.width)) * 0.16)
-        painter.drawEllipse(start, radius, radius)
-        painter.drawEllipse(end, radius, radius)
-
     def _air_path_endpoints(
         self,
         note: Any,
@@ -409,8 +388,6 @@ class AirRendererMixin(RendererMixinSupport):
         )
 
     def _air_slide_step_role(self, index: int, step_count: int, step: Any) -> str:
-        if step.note_type == NoteType.ASX:
-            return NOTE_ROLE_ACTION
         if index == step_count - 1:
             return NOTE_ROLE_END
         if step.note_type == NoteType.ASD:
@@ -431,7 +408,7 @@ class AirRendererMixin(RendererMixinSupport):
     ) -> None:
         if isinstance(note, AirSlideStart):
             target = getattr(note, "target_note", None)
-            if not (target and target in {"ASD", "ASC", "ASX"}):
+            if not (target and target in {"ASD", "ASC"}):
                 self._draw_air_slide_arrow(painter, note, current_position, timeline)
             self._draw_air_slide_step_bars(painter, note, current_position, timeline)
             return
@@ -471,7 +448,7 @@ class AirRendererMixin(RendererMixinSupport):
 
         if is_crush:
             self._draw_air_crush_elements(painter, note, current_position, timeline)
-        elif note.note_type in (NoteType.ALD, NoteType.AHD, NoteType.AHX, NoteType.ASD, NoteType.ASC, NoteType.ASX):
+        elif note.note_type in (NoteType.ALD, NoteType.AHD, NoteType.AHX, NoteType.ASD, NoteType.ASC):
             self._draw_air_end_bar(painter, note, current_position, timeline)
         elif is_action:
             self._draw_air_joint_bar(painter, note, current_position, timeline)
@@ -683,10 +660,10 @@ class AirRendererMixin(RendererMixinSupport):
         step_count: int,
         step: Any,
     ) -> bool:
-        # ASD/ASX always get purple action bars.
+        # ASD starts the chain and the final segment gets the purple action bar.
         # ASC gets a transparent grey control-point rect (like SLC).
         # The last step always gets a purple action bar regardless of type.
-        return step.note_type in {NoteType.ASD, NoteType.ASX} or index == step_count - 1
+        return step.note_type == NoteType.ASD or index == step_count - 1
 
     def _air_slide_step_is_control_point(self, step: Any) -> bool:
         """ASC steps that aren't the chain's last step draw as control points."""

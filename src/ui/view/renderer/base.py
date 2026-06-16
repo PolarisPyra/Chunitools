@@ -4,7 +4,7 @@ import logging
 
 NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -38,7 +38,6 @@ from src.ui.view.renderer.notes import (
     AirRendererMixin,
     DamageRendererMixin,
     FlickRendererMixin,
-    HeavenHoldRendererMixin,
     HoldRendererMixin,
     SlideRendererMixin,
 )
@@ -157,7 +156,6 @@ class BaseRenderer(
     AirRendererMixin,
     DamageRendererMixin,
     FlickRendererMixin,
-    HeavenHoldRendererMixin,
     HoldRendererMixin,
     SlideRendererMixin,
 ):
@@ -337,8 +335,6 @@ class BaseRenderer(
             render_tasks.append(RenderTask(10, self._draw_hold_background, note, note_tick))
         elif note_type in (NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC):
             render_tasks.append(RenderTask(12, self._draw_slide_background, note, note_tick))
-        elif note_type in (NoteType.HHD, NoteType.HHX):
-            render_tasks.append(RenderTask(20, self._draw_heaven_hold_background, note, note_tick))
         self._dispatch_air_tasks(render_tasks, note, note_type, note_tick)
         self._dispatch_foreground_tasks(render_tasks, note, note_type, note_tick)
 
@@ -346,7 +342,7 @@ class BaseRenderer(
         self, render_tasks: list[RenderTask], note: Any, note_type: NoteType, tick: int
     ) -> None:
         """Dispatch air-layer primitives (priority 60–69, above all ground)."""
-        if note_type in (NoteType.ASD, NoteType.ASC, NoteType.ASX) or isinstance(
+        if note_type in (NoteType.ASD, NoteType.ASC) or isinstance(
             note, AirSlideStart
         ):
             # Air slide body — air foreground
@@ -368,9 +364,6 @@ class BaseRenderer(
             render_tasks.append(RenderTask(60, self._draw_air_hold_background, note, tick))
             if note_type == NoteType.AHD:
                 render_tasks.append(RenderTask(65, self._draw_air_action_bar, note, tick))
-
-        elif note_type == NoteType.ASO:
-            render_tasks.append(RenderTask(60, self._draw_air_solid_background, note, tick))
 
         elif note_type in AIR_ARROW_NOTES:
             # Air step replacement at air-mid, arrow at air-top
@@ -403,30 +396,230 @@ class BaseRenderer(
             render_tasks.append(RenderTask(40, self._draw_damage, note, tick))
         elif note_type == NoteType.FLK:
             render_tasks.append(RenderTask(40, self._draw_flick, note, tick))
-        elif note_type in (NoteType.HHD, NoteType.HHX):
-            render_tasks.append(RenderTask(40, self._draw_heaven_hold_foreground, note, tick))
-
-    def _resolve_air_wrapped_foreground(
-        self, note: Any
-    ) -> Any | None:
+    def _resolve_air_wrapped_foreground(self, note: Any) -> Any | None:
         """Resolve ASC/ASD wrapper to a foreground draw function.
 
-        Draws an air-action purple tap-style head for all wrapped ground types,
-        keeping the air visual identity while the wrapped type controls behavior.
+        The wrapper controls air path/action geometry. Its target note controls
+        the visible ground head identity.
         """
+        if isinstance(note, AirSlideStart):
+            if self._air_wrapped_ground_sources(note):
+                return self._draw_air_wrapped_ground_head
+            return None
         if not hasattr(note, "target_note"):
             return None
         wrapped: str = note.target_note
         if not isinstance(wrapped, str):
             return None
-        if wrapped in ("TAP", "CHR", "FLK", "HLD", "HXD", "SLD", "SXD", "SLC", "SXC"):
-            from src.ui.theme.notes import get_action_bar_color
-
-            air_purple = get_action_bar_color()
-            return lambda p, n, c, t, __self=self, __c=air_purple: __self._draw_tap(
-                p, n, c, t, __c
-            )
+        if wrapped in {
+            "TAP",
+            "CHR",
+            "FLK",
+            "MNE",
+            "HLD",
+            "HXD",
+            "SLD",
+            "SXD",
+            "SLC",
+            "SXC",
+        }:
+            return self._draw_air_wrapped_ground_head
         return None
+
+    def _draw_air_wrapped_ground_head(
+        self,
+        painter: QPainter,
+        note: Any,
+        current_position: float,
+        timeline: Any,
+    ) -> None:
+        for source, source_wrapped in self._air_wrapped_ground_sources(note):
+            self._draw_air_wrapped_ground_head_source(
+                painter,
+                source,
+                source_wrapped,
+                self._note_start_abs_pos(source, timeline),
+                current_position,
+            )
+
+    def _draw_air_wrapped_ground_head_source(
+        self,
+        painter: QPainter,
+        source: Any,
+        wrapped: NoteType,
+        abs_pos: float,
+        current_position: float,
+    ) -> None:
+        proxy = replace(source, note_type=wrapped)
+        if wrapped == NoteType.FLK:
+            self._draw_flick_at_abs_pos(painter, proxy, abs_pos, current_position)
+        elif wrapped == NoteType.MNE:
+            self._draw_damage_at_abs_pos(painter, proxy, abs_pos, current_position)
+        elif wrapped in {NoteType.CHR, NoteType.HXD, NoteType.SXD, NoteType.SXC}:
+            self._draw_tap_at_abs_pos(painter, proxy, abs_pos, current_position, self.colors.ex_tap)
+        elif wrapped in {NoteType.HLD}:
+            self._draw_tap_at_abs_pos(painter, proxy, abs_pos, current_position, self.colors.hold)
+        elif wrapped in {NoteType.SLD, NoteType.SLC}:
+            self._draw_tap_at_abs_pos(painter, proxy, abs_pos, current_position, self.colors.slide)
+        else:
+            self._draw_tap_at_abs_pos(painter, proxy, abs_pos, current_position, self.colors.tap)
+
+    def _air_wrapped_ground_sources(self, note: Any) -> list[tuple[Any, NoteType]]:
+        if isinstance(note, AirSlideStart):
+            return [
+                (step, wrapped)
+                for step in note.steps
+                if (wrapped := self._air_wrapped_ground_type(step)) is not None
+            ]
+        wrapped = self._air_wrapped_ground_type(note)
+        if wrapped is None:
+            return []
+        return [(note, wrapped)]
+
+    def _air_wrapped_ground_type(self, note: Any) -> NoteType | None:
+        wrapped = getattr(note, "target_note", None)
+        if not isinstance(wrapped, str):
+            return None
+        try:
+            wrapped_type = NoteType(wrapped)
+        except ValueError:
+            return None
+        if wrapped_type in {
+            NoteType.TAP,
+            NoteType.CHR,
+            NoteType.FLK,
+            NoteType.MNE,
+            NoteType.HLD,
+            NoteType.HXD,
+            NoteType.SLD,
+            NoteType.SXD,
+            NoteType.SLC,
+            NoteType.SXC,
+        }:
+            return wrapped_type
+        return None
+
+    def _note_start_abs_pos(self, note: Any, timeline: Any) -> float:
+        return timeline.note_tick(note) / timeline.resolution
+
+    def _wrapped_note_visible(self, note_type: NoteType) -> bool:
+        if note_type == NoteType.SLC:
+            return self.visible_note_types.get(NoteType.SLD.value, True)
+        if note_type == NoteType.SXC:
+            return self.visible_note_types.get(NoteType.SXD.value, True)
+        return self.visible_note_types.get(note_type.value, True)
+
+    def _draw_tap_at_abs_pos(
+        self,
+        painter: QPainter,
+        note: Any,
+        abs_pos: float,
+        current_position: float,
+        color: GradientColor | QColor,
+    ) -> None:
+        if not self._wrapped_note_visible(note.note_type):
+            return
+
+        y, x, w = (
+            self.projection.y(abs_pos, current_position),
+            self.projection.x(note.cell),
+            self.projection.w(note.width),
+        )
+        rect = QRectF(x, y - self.constants.HEAD_HEIGHT / 2, w, self.constants.HEAD_HEIGHT)
+        symbol_type = self._tap_symbol_type(note)
+        pixmap_key = self._tap_pixmap_key(color, w, symbol_type)
+
+        def draw_cached_tap(p: QPainter, r: QRectF) -> None:
+            self._draw_rounded_rect(p, r, color)
+            self._draw_tap_symbol_for_type(p, r, symbol_type)
+
+        pixmap = self.cache.get_pixmap(
+            pixmap_key,
+            draw_cached_tap,
+            w,
+            self.constants.HEAD_HEIGHT,
+        )
+        painter.drawPixmap(rect.topLeft().toPoint(), pixmap)
+
+    def _draw_flick_at_abs_pos(
+        self,
+        painter: QPainter,
+        note: Any,
+        abs_pos: float,
+        current_position: float,
+    ) -> None:
+        if not self._wrapped_note_visible(note.note_type):
+            return
+        y, x, w = (
+            self.projection.y(abs_pos, current_position),
+            self.projection.x(note.cell),
+            self.projection.w(note.width),
+        )
+        rect = QRectF(x, y - self.constants.HEAD_HEIGHT / 2, w, self.constants.HEAD_HEIGHT)
+        base_color = self.colors.flick_base
+        fg_color = self.colors.flick_foreground
+        color_key = (
+            base_color.light.rgba(),
+            base_color.dark.rgba(),
+            fg_color.light.rgba(),
+            fg_color.dark.rgba(),
+        )
+        pixmap_key = ("flick", color_key, w)
+        pixmap = self.cache.get_pixmap(
+            pixmap_key,
+            lambda p, r: self._draw_flick_graphics(p, r, base_color, fg_color),
+            w,
+            self.constants.HEAD_HEIGHT,
+        )
+        painter.drawPixmap(rect.topLeft().toPoint(), pixmap)
+
+    def _draw_damage_at_abs_pos(
+        self,
+        painter: QPainter,
+        note: Any,
+        abs_pos: float,
+        current_position: float,
+    ) -> None:
+        if not self._wrapped_note_visible(note.note_type):
+            return
+        y, x, w = (
+            self.projection.y(abs_pos, current_position),
+            self.projection.x(note.cell),
+            self.projection.w(note.width),
+        )
+        rect = QRectF(x, y - self.constants.HEAD_HEIGHT / 2, w, self.constants.HEAD_HEIGHT)
+        gradient = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        gradient.setColorAt(0, self.colors.damage.light)
+        gradient.setColorAt(1, self.colors.damage.dark)
+        path = QPainterPath()
+        path.moveTo(rect.center().x(), rect.top())
+        path.lineTo(rect.right(), rect.center().y())
+        path.lineTo(rect.center().x(), rect.bottom())
+        path.lineTo(rect.left(), rect.center().y())
+        path.closeSubpath()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(gradient))
+        painter.drawPath(path)
+        painter.setPen(
+            QPen(
+                self.colors.border.light,
+                rect.height() * self.constants.BORDER_WIDTH_RATIO,
+            )
+        )
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
+        painter.setPen(
+            QPen(Qt.GlobalColor.white, rect.height() * self.constants.BORDER_WIDTH_RATIO)
+        )
+        inset = rect.height() * 0.32
+        painter.drawLine(
+            rect.topLeft() + QPointF(inset, inset),
+            rect.bottomRight() - QPointF(inset, inset),
+        )
+        painter.drawLine(
+            rect.topRight() + QPointF(-inset, inset),
+            rect.bottomLeft() + QPointF(inset, -inset),
+        )
 
     # --- Core Note Drawing ---
 

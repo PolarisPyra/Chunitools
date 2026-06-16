@@ -40,9 +40,9 @@ from src.core.models import (
 )
 from src.notes import (
     AIR_ARROW_NOTE_TYPES,
+    AIR_CRUSH_NOTE_TYPES,
     AIR_HOLD_NOTE_TYPES,
     AIR_SLIDE_NOTE_TYPES,
-    AIR_TRACE_NOTE_TYPES,
     PARSER_NOTE_TYPE_VALUES,
     SLIDE_NOTE_TYPES,
     AirSlide,
@@ -240,7 +240,7 @@ class C2sParser(IChartParser):
         self._air_arrows: list[tuple[NoteType, tuple[str, ...]]] = []
         self._air_path_notes: list[Note] = []
 
-        _air_path_types = AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_TRACE_NOTE_TYPES
+        _air_path_types = AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_CRUSH_NOTE_TYPES
 
         # Deduplicate: some charts have identical lines that parse to the same note
         _seen: set[tuple[str, ...]] = set()
@@ -282,9 +282,8 @@ class C2sParser(IChartParser):
         self._target_note_families = {
             NoteType.HLD: frozenset({NoteType.HLD, NoteType.HXD}),
             NoteType.SLD: frozenset({NoteType.SLD, NoteType.SXD, NoteType.SLC, NoteType.SXC}),
-            NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
-            NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
-            NoteType.ASX: frozenset({NoteType.ASD, NoteType.ASC, NoteType.ASX}),
+            NoteType.ASD: frozenset({NoteType.ASD, NoteType.ASC}),
+            NoteType.ASC: frozenset({NoteType.ASD, NoteType.ASC}),
         }
         self._used_slide_segments: set[SlideTo] = set()
         self._used_air_slide_segments: set[AirSlide] = set()

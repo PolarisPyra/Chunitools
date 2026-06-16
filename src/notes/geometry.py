@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 from src.core.const import AIR_ARROW_NOTES, AIR_NOTE_TYPES
 from src.notes.air import Air, AirHold, AirHoldStart, AirSlide, AirSlideStart, CrashSlide
-from src.notes.effects import AirSolid, HeavenHold
 from src.notes.hold import Hold
 from src.notes.slide import Slide, SlideTo
 
@@ -24,8 +23,6 @@ _LONG_NOTE_CLASSES = (
     AirHoldStart,
     AirHold,
     CrashSlide,
-    AirSolid,
-    HeavenHold,
     AirSlideStart,
     AirSlide,
     SlideTo,
@@ -35,8 +32,6 @@ _MOVING_NOTE_CLASSES = (
     Slide,
     SlideTo,
     CrashSlide,
-    AirSolid,
-    HeavenHold,
     AirSlideStart,
     AirSlide,
     AirHold,

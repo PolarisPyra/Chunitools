@@ -652,7 +652,7 @@ def _air_slide_step_bar_positions(note: AirSlideStart, timeline: ChartTimeline):
     step_count = len(note.steps)
     for index, step in enumerate(note.steps):
         abs_pos += step.duration / timeline.resolution
-        if step.note_type not in {NoteType.ASD, NoteType.ASX} and index != step_count - 1:
+        if step.note_type != NoteType.ASD and index != step_count - 1:
             continue
         bars.append((abs_pos, step.end_cell, step.end_width))
     return bars
@@ -717,3 +717,139 @@ def test_ex_slide_start_is_not_chained_to_air_slide_for_2960():
     assert predecessor is None
     assert renderer._should_draw_slide_head(slide, timeline)
     assert renderer._slide_start_color(slide) == renderer.colors.ex_tap
+
+
+def test_parsed_air_slide_wrapped_heads_dispatch_as_wrapped_ground_types():
+    from src.core.metadata import parse_c2s
+    from src.ui.view.projection import ViewProjection
+    from src.ui.view.renderer.base import BaseRenderer
+
+    chart = parse_c2s(
+        "\n".join(
+            [
+                "ASD\t0\t0\t0\t1\tTAP\t1.0\t24\t0\t1\t1.0\tDEF",
+                "ASD\t0\t24\t1\t1\tSLD\t1.0\t24\t1\t1\t1.0\tDEF",
+                "ASD\t0\t48\t2\t1\tCHR\t1.0\t24\t2\t1\t1.0\tDEF",
+                "ASD\t0\t72\t3\t1\tFLK\t1.0\t24\t3\t1\t1.0\tDEF",
+                "ASD\t0\t96\t4\t1\tMNE\t1.0\t24\t4\t1\t1.0\tDEF",
+                "ASD\t0\t120\t5\t1\tHLD\t1.0\t24\t5\t1\t1.0\tDEF",
+                "ASD\t0\t144\t6\t1\tHXD\t1.0\t24\t6\t1\t1.0\tDEF",
+                "ASD\t0\t168\t7\t1\tSLC\t1.0\t24\t7\t1\t1.0\tDEF",
+                "ASD\t0\t192\t8\t1\tSXC\t1.0\t24\t8\t1\t1.0\tDEF",
+            ]
+        )
+    )
+    renderer = BaseRenderer(ViewProjection(timeline_engine=chart.timeline))
+    taps: list[tuple[NoteType, object]] = []
+    flicks: list[NoteType] = []
+    mines: list[NoteType] = []
+
+    renderer._draw_soflan_areas = lambda *args: None
+    renderer._draw_air_slide_background = lambda *args: None
+    renderer._draw_air_action_bar = lambda *args: None
+    renderer._draw_tap_at_abs_pos = (
+        lambda painter, note, abs_pos, current_position, color: taps.append(
+            (note.note_type, color, abs_pos)
+        )
+    )
+    renderer._draw_flick_at_abs_pos = (
+        lambda painter, note, abs_pos, current_position: flicks.append((note.note_type, abs_pos))
+    )
+    renderer._draw_damage_at_abs_pos = (
+        lambda painter, note, abs_pos, current_position: mines.append((note.note_type, abs_pos))
+    )
+
+    renderer.draw_notes(None, chart.notes, 0.0)
+
+    assert taps == [
+        (NoteType.TAP, renderer.colors.tap, 0.0),
+        (NoteType.SLD, renderer.colors.slide, 0.0625),
+        (NoteType.CHR, renderer.colors.ex_tap, 0.125),
+        (NoteType.HLD, renderer.colors.hold, 0.3125),
+        (NoteType.HXD, renderer.colors.ex_tap, 0.375),
+        (NoteType.SLC, renderer.colors.slide, 0.4375),
+        (NoteType.SXC, renderer.colors.ex_tap, 0.5),
+    ]
+    assert flicks == [(NoteType.FLK, 0.1875)]
+    assert mines == [(NoteType.MNE, 0.25)]
+
+
+def test_chained_air_slide_wrapped_heads_dispatch_each_step_wrapped_type():
+    from src.core.metadata import parse_c2s
+    from src.notes.air import AirSlideStart
+    from src.ui.view.projection import ViewProjection
+    from src.ui.view.renderer.base import BaseRenderer
+
+    chart = parse_c2s(
+        "\n".join(
+            [
+                "ASD\t0\t0\t0\t1\tTAP\t1.0\t24\t1\t1\t1.0\tDEF",
+                "ASC\t0\t24\t1\t1\tCHR\t1.0\t24\t2\t1\t1.0\tDEF",
+                "ASC\t0\t48\t2\t1\tFLK\t1.0\t24\t3\t1\t1.0\tDEF",
+                "ASC\t0\t72\t3\t1\tSLC\t1.0\t24\t4\t1\t1.0\tDEF",
+            ]
+        )
+    )
+    chains = [note for note in chart.notes if isinstance(note, AirSlideStart)]
+    renderer = BaseRenderer(ViewProjection(timeline_engine=chart.timeline))
+    taps: list[tuple[NoteType, object, float]] = []
+    flicks: list[tuple[NoteType, float]] = []
+
+    assert len(chains) == 1
+    assert [step.target_note for step in chains[0].steps] == ["TAP", "CHR", "FLK", "SLC"]
+
+    renderer._draw_soflan_areas = lambda *args: None
+    renderer._draw_air_slide_background = lambda *args: None
+    renderer._draw_air_action_bar = lambda *args: None
+    renderer._draw_tap_at_abs_pos = (
+        lambda painter, note, abs_pos, current_position, color: taps.append(
+            (note.note_type, color, abs_pos)
+        )
+    )
+    renderer._draw_flick_at_abs_pos = (
+        lambda painter, note, abs_pos, current_position: flicks.append((note.note_type, abs_pos))
+    )
+
+    renderer.draw_notes(None, chart.notes, 0.0)
+
+    assert taps == [
+        (NoteType.TAP, renderer.colors.tap, 0.0),
+        (NoteType.CHR, renderer.colors.ex_tap, 0.0625),
+        (NoteType.SLC, renderer.colors.slide, 0.1875),
+    ]
+    assert flicks == [(NoteType.FLK, 0.125)]
+
+
+def test_chained_air_slide_wrapped_heads_schedule_when_first_step_wraps_air_slide():
+    from src.core.metadata import parse_c2s
+    from src.notes.air import AirSlideStart
+    from src.ui.view.projection import ViewProjection
+    from src.ui.view.renderer.base import BaseRenderer
+
+    chart = parse_c2s(
+        "\n".join(
+            [
+                "ASD\t0\t0\t0\t1\tASC\t1.0\t24\t1\t1\t1.0\tDEF",
+                "ASC\t0\t24\t1\t1\tCHR\t1.0\t24\t2\t1\t1.0\tDEF",
+            ]
+        )
+    )
+    chains = [note for note in chart.notes if isinstance(note, AirSlideStart)]
+    renderer = BaseRenderer(ViewProjection(timeline_engine=chart.timeline))
+    taps: list[tuple[NoteType, object, float]] = []
+
+    assert len(chains) == 1
+    assert [step.target_note for step in chains[0].steps] == ["ASC", "CHR"]
+
+    renderer._draw_soflan_areas = lambda *args: None
+    renderer._draw_air_slide_background = lambda *args: None
+    renderer._draw_air_action_bar = lambda *args: None
+    renderer._draw_tap_at_abs_pos = (
+        lambda painter, note, abs_pos, current_position, color: taps.append(
+            (note.note_type, color, abs_pos)
+        )
+    )
+
+    renderer.draw_notes(None, chart.notes, 0.0)
+
+    assert taps == [(NoteType.CHR, renderer.colors.ex_tap, 0.0625)]

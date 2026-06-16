@@ -3,6 +3,7 @@ from __future__ import annotations
 # ruff: noqa: PLR0913
 import logging
 import math
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QElapsedTimer, QPointF, Qt, QTimer, Signal
@@ -33,6 +34,20 @@ from src.ui.theme.notes import TRACE_COLORS, get_note_color
 from src.ui.view import timeline_compat
 
 LOGGER = logging.getLogger("ui.3dview")
+
+AIR_WRAPPED_GROUND_TYPES = {
+    NoteType.TAP,
+    NoteType.CHR,
+    NoteType.FLK,
+    NoteType.MNE,
+    NoteType.HLD,
+    NoteType.HXD,
+    NoteType.SLD,
+    NoteType.SLC,
+    NoteType.SXD,
+    NoteType.SXC,
+}
+AIR_WRAPPED_EX_HEAD_TYPES = {NoteType.CHR, NoteType.HXD, NoteType.SXD, NoteType.SXC}
 
 if TYPE_CHECKING:
     from src.core.models import Chart
@@ -89,6 +104,8 @@ RENDER_WIDTH_SCALE = (
     0.87,
 )
 RENDER_MIN_AIR_PATH_WIDTH_SCALE = 0.734375
+MAX_PROJECTED_POLYGON_VIEWPORT_MULTIPLE = 4.0
+MAX_PROJECTED_POLYGON_AREA_MULTIPLE = 4.0
 
 JUDGE_OFFSET = 0.0
 DEFAULT_SCROLL_SPEED = 9.0
@@ -227,6 +244,34 @@ def _projected_note_height(
     _, y0 = _project_point(0.0, 0.0, z - half_depth, viewport_w, viewport_h)
     _, y1 = _project_point(0.0, 0.0, z + half_depth, viewport_w, viewport_h)
     return abs(y1 - y0)
+
+
+def _projected_polygon_is_bounded(
+    points: list[QPointF],
+    viewport_w: float,
+    viewport_h: float,
+) -> bool:
+    if viewport_w <= 0.0 or viewport_h <= 0.0:
+        return False
+    if not all(math.isfinite(point.x()) and math.isfinite(point.y()) for point in points):
+        return False
+
+    xs = [point.x() for point in points]
+    ys = [point.y() for point in points]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    bounds_margin = max(viewport_w, viewport_h) * MAX_PROJECTED_POLYGON_VIEWPORT_MULTIPLE
+    if (
+        min_x < -bounds_margin
+        or max_x > viewport_w + bounds_margin
+        or min_y < -bounds_margin
+        or max_y > viewport_h + bounds_margin
+    ):
+        return False
+
+    polygon_area = max(0.0, max_x - min_x) * max(0.0, max_y - min_y)
+    viewport_area = viewport_w * viewport_h
+    return polygon_area <= viewport_area * MAX_PROJECTED_POLYGON_AREA_MULTIPLE
 
 
 def _chart_air_height_to_g0(height: float) -> float:
@@ -401,11 +446,15 @@ def _air_path_screen_span(
     cell: float, width: float, vanish_x: float, scale: float
 ) -> tuple[float, float]:
     _, lane_w = _note_screen_span(cell, width, vanish_x, scale)
-    visual_w = lane_w * max(_render_width_scale(width), RENDER_MIN_AIR_PATH_WIDTH_SCALE)
+    visual_w = lane_w * _air_path_width_factor(width)
     center_x = (
         vanish_x + (((cell + width / 2.0) * LANE_UNITS) - WORLD_HALF) * PIXELS_PER_UNIT * scale
     )
     return center_x - visual_w / 2.0, visual_w
+
+
+def _air_path_width_factor(width: float) -> float:
+    return max(_render_width_scale(width), RENDER_MIN_AIR_PATH_WIDTH_SCALE)
 
 
 def _scaled_span_width(x: float, width: float, factor: float) -> tuple[float, float]:
@@ -1104,9 +1153,6 @@ class PlayView3D(QWidget):
             NoteType.ALD,
             NoteType.ASD,
             NoteType.ASC,
-            NoteType.ASO,
-            NoteType.HHD,
-            NoteType.HHX,
         }:
             x, w = _air_path_screen_span(note.cell, note.width, vanish_x, scale)
 
@@ -1242,40 +1288,6 @@ class PlayView3D(QWidget):
                 vanish_y,
                 judge_y,
             )
-        elif nt == NoteType.ASO:
-            self._draw_air_solid(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                color,
-                alpha,
-                judge_time,
-                depth,
-                end_depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
-        elif nt in {NoteType.HHD, NoteType.HHX}:
-            self._draw_heaven_hold(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                color,
-                alpha,
-                judge_time,
-                depth,
-                end_depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
         else:
             self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, depth)
 
@@ -1300,6 +1312,90 @@ class PlayView3D(QWidget):
         pt2 = _project_point(w_x1, wy, z_near, w, h)
         pt3 = _project_point(w_x0, wy, z_near, w, h)
         return [QPointF(*pt0), QPointF(*pt1), QPointF(*pt2), QPointF(*pt3)]
+
+    def _project_sustain_corners(
+        self,
+        note: Note,
+        start_cell: float,
+        start_width: float,
+        start_depth: float,
+        end_cell: float,
+        end_width: float,
+        end_depth: float,
+        *,
+        start_world_y: float | None = None,
+        end_world_y: float | None = None,
+        start_width_factor: float = NOTE_WIDTH_FRAC,
+        end_width_factor: float = NOTE_WIDTH_FRAC,
+    ) -> list[QPointF]:
+        viewport_w, viewport_h = self.width(), self.height()
+        start_y = self._get_world_y(note) if start_world_y is None else start_world_y
+        end_y = self._get_world_y(note) if end_world_y is None else end_world_y
+        start_center = (start_cell + start_width / 2.0) * LANE_WIDTH - FIELD_HALF
+        end_center = (end_cell + end_width / 2.0) * LANE_WIDTH - FIELD_HALF
+        start_visual_width = start_width * LANE_WIDTH * start_width_factor
+        end_visual_width = end_width * LANE_WIDTH * end_width_factor
+        start_x0 = start_center - start_visual_width / 2.0
+        start_x1 = start_center + start_visual_width / 2.0
+        end_x0 = end_center - end_visual_width / 2.0
+        end_x1 = end_center + end_visual_width / 2.0
+        start_z = _compact_depth_to_z(start_depth)
+        end_z = _compact_depth_to_z(end_depth)
+        return [
+            QPointF(*_project_point(start_x0, start_y, start_z, viewport_w, viewport_h)),
+            QPointF(*_project_point(start_x1, start_y, start_z, viewport_w, viewport_h)),
+            QPointF(*_project_point(end_x1, end_y, end_z, viewport_w, viewport_h)),
+            QPointF(*_project_point(end_x0, end_y, end_z, viewport_w, viewport_h)),
+        ]
+
+    def _draw_projected_sustain_body(
+        self,
+        painter: QPainter,
+        note: Note,
+        start_cell: float,
+        start_width: float,
+        start_depth: float,
+        end_cell: float,
+        end_width: float,
+        end_depth: float,
+        color: QColor,
+        alpha: int,
+        *,
+        start_world_y: float | None = None,
+        end_world_y: float | None = None,
+        start_width_factor: float = NOTE_WIDTH_FRAC,
+        end_width_factor: float = NOTE_WIDTH_FRAC,
+    ) -> None:
+        if painter is None:
+            return
+        corners = self._project_sustain_corners(
+            note,
+            start_cell,
+            start_width,
+            start_depth,
+            end_cell,
+            end_width,
+            end_depth,
+            start_world_y=start_world_y,
+            end_world_y=end_world_y,
+            start_width_factor=start_width_factor,
+            end_width_factor=end_width_factor,
+        )
+        if not _projected_polygon_is_bounded(corners, self.width(), self.height()):
+            return
+
+        body_color = QColor(color.red(), color.green(), color.blue(), alpha // 3)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(body_color)
+        painter.drawPolygon(QPolygonF(corners))
+
+        start_mid = (corners[0] + corners[1]) * 0.5
+        end_mid = (corners[2] + corners[3]) * 0.5
+        start_scale = _projection_for_depth(start_depth, self.width(), self.height())[0]
+        end_scale = _projection_for_depth(end_depth, self.width(), self.height())[0]
+        pen_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
+        painter.setPen(QPen(pen_color, max(1, int(min(start_scale, end_scale) * 2))))
+        painter.drawLine(start_mid, end_mid)
 
     def _draw_flat_note_quad(
         self,
@@ -1469,18 +1565,17 @@ class PlayView3D(QWidget):
         end_scale, end_y, _ = self._world_z_to_screen(draw_end_depth, vanish_y, judge_y)
         end_x, end_w = _note_screen_span(note.cell, note.width, vanish_x, end_scale)
 
-        self._draw_sustain_body(
+        self._draw_projected_sustain_body(
             painter,
-            x,
-            y,
-            w,
-            end_x,
-            end_y,
-            end_w,
+            note,
+            note.cell,
+            note.width,
+            draw_depth,
+            note.cell,
+            note.width,
+            draw_end_depth,
             color,
             alpha,
-            scale,
-            end_scale,
         )
 
         if _depth_in_draw_range(depth):
@@ -1544,19 +1639,17 @@ class PlayView3D(QWidget):
             end_scale, end_y, _ = self._world_z_to_screen(draw_end_depth, vanish_y, judge_y)
             end_x, end_w = _note_screen_span(note.end_cell, note.end_width, vanish_x, end_scale)
 
-            self._draw_sustain_body(
+            self._draw_projected_sustain_body(
                 painter,
-                x,
-                y,
-                w,
-                end_x,
-                end_y,
-                end_w,
+                note,
+                start_cell,
+                start_width,
+                draw_depth,
+                note.end_cell,
+                note.end_width,
+                draw_end_depth,
                 color,
                 alpha,
-                scale,
-                end_scale,
-                is_slide=True,
             )
 
             if _depth_in_draw_range(depth):
@@ -1660,19 +1753,17 @@ class PlayView3D(QWidget):
             step_scale, step_y, _ = self._world_z_to_screen(draw_step_depth, vanish_y, judge_y)
             step_x, step_w = _note_screen_span(step.end_cell, step.end_width, vanish_x, step_scale)
 
-            self._draw_sustain_body(
+            self._draw_projected_sustain_body(
                 painter,
-                prev_x,
-                prev_y,
-                prev_w,
-                step_x,
-                step_y,
-                step_w,
+                note,
+                start_cell,
+                start_width,
+                draw_start_depth,
+                step.end_cell,
+                step.end_width,
+                draw_step_depth,
                 color,
                 alpha,
-                prev_scale,
-                step_scale,
-                is_slide=True,
             )
 
             step_color = QColor(color.red(), color.green(), color.blue(), alpha * 3 // 4)
@@ -1752,24 +1843,21 @@ class PlayView3D(QWidget):
             return
         if w1 <= 0.0 or w2 <= 0.0:
             return
-        max_coord = 1e6
-        if any(abs(value) > max_coord for value in (x1, y1, x2, y2)):
-            return
         hw1 = w1 / 2.0
         hw2 = w2 / 2.0
+        body_points = [
+            QPointF(x1, y1),
+            QPointF(x1 + w1, y1),
+            QPointF(x2 + w2, y2),
+            QPointF(x2, y2),
+        ]
+        if not _projected_polygon_is_bounded(body_points, self.width(), self.height()):
+            return
 
         body_color = QColor(color.red(), color.green(), color.blue(), alpha // 3)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(body_color)
-        body_poly = QPolygonF(
-            [
-                QPointF(x1, y1),
-                QPointF(x1 + w1, y1),
-                QPointF(x2 + w2, y2),
-                QPointF(x2, y2),
-            ]
-        )
-        painter.drawPolygon(body_poly)
+        painter.drawPolygon(QPolygonF(body_points))
 
         pen_color = QColor(color.red(), color.green(), color.blue(), alpha)
         line_width = max(2, int(min(scale1, scale2) * 4))
@@ -1794,24 +1882,20 @@ class PlayView3D(QWidget):
             return
         if w <= 0.0 or abs(y_bottom - y_top) < 1.0:
             return
-        max_coord = 1e6
-        if any(abs(value) > max_coord for value in (x, y_bottom, y_top)):
-            return
-
         top = min(y_bottom, y_top)
         bottom = max(y_bottom, y_top)
-        body_poly = QPolygonF(
-            [
-                QPointF(x, bottom),
-                QPointF(x + w, bottom),
-                QPointF(x + w, top),
-                QPointF(x, top),
-            ]
-        )
+        body_points = [
+            QPointF(x, bottom),
+            QPointF(x + w, bottom),
+            QPointF(x + w, top),
+            QPointF(x, top),
+        ]
+        if not _projected_polygon_is_bounded(body_points, self.width(), self.height()):
+            return
 
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), alpha // 3)))
-        painter.drawPolygon(body_poly)
+        painter.drawPolygon(QPolygonF(body_points))
 
         center_x = x + w / 2.0
         edge_color = QColor(color.red(), color.green(), color.blue(), max(40, alpha // 2))
@@ -2016,8 +2100,19 @@ class PlayView3D(QWidget):
 
         # When targeting a ground note, the arrow sits on the ground note
         # at ground level, not at the air slide's elevated height.
-        if target_type not in {"AIR", "AUR", "AUL", "ADW", "ADR", "ADL",
-                                 "AHD", "AHX", "ASD", "ASC", "DEF"}:
+        if target_type not in {
+            "AIR",
+            "AUR",
+            "AUL",
+            "ADW",
+            "ADR",
+            "ADL",
+            "AHD",
+            "AHX",
+            "ASD",
+            "ASC",
+            "DEF",
+        }:
             _, ground_y, _ = _projection_for_depth(depth, self.width(), self.height())
             y = ground_y
 
@@ -2142,18 +2237,21 @@ class PlayView3D(QWidget):
             alpha,
         )
 
-        self._draw_sustain_body(
+        self._draw_projected_sustain_body(
             painter,
-            x,
-            y,
-            w,
-            end_x,
-            end_y,
-            end_w,
+            note,
+            start_cell,
+            start_width,
+            draw_depth,
+            note.cell,
+            note.width,
+            draw_end_depth,
             color,
             alpha,
-            scale,
-            end_scale,
+            start_world_y=start_world_y,
+            end_world_y=end_world_y,
+            start_width_factor=_air_path_width_factor(start_width),
+            end_width_factor=_air_path_width_factor(note.width),
         )
 
         if is_start and _depth_in_draw_range(depth):
@@ -2246,29 +2344,31 @@ class PlayView3D(QWidget):
                 color,
                 alpha,
             )
-            self._draw_air_path_line(
+            self._draw_projected_sustain_body(
                 painter,
-                x,
-                y,
-                w,
-                end_x,
-                end_y,
-                end_w,
+                note,
+                start_cell,
+                start_width,
+                draw_depth,
+                end_cell,
+                end_width,
+                draw_end_depth,
                 color,
                 alpha,
-                scale,
-                end_scale,
+                start_world_y=start_world_y,
+                end_world_y=end_world_y,
+                start_width_factor=_air_path_width_factor(start_width),
+                end_width_factor=_air_path_width_factor(end_width),
             )
 
             if _depth_in_draw_range(depth):
                 if self._air_anchor_for_note(note) is None:
-                    self._draw_tap_quad(
+                    self._draw_air_wrapped_ground_head(
                         painter,
                         x,
                         y,
                         w,
                         scale,
-                        color,
                         alpha,
                         note,
                         depth,
@@ -2323,13 +2423,12 @@ class PlayView3D(QWidget):
 
         if _depth_in_draw_range(depth):
             if self._air_anchor_for_note(note) is None:
-                self._draw_tap_quad(
+                self._draw_air_wrapped_ground_head(
                     painter,
                     x,
                     y,
                     w,
                     scale,
-                    color,
                     alpha,
                     note,
                     depth,
@@ -2373,6 +2472,16 @@ class PlayView3D(QWidget):
         for index, step in enumerate(note.steps):
             step_abs = step.measure + step.offset / tl.resolution
             step_end_abs = step_abs + step.duration / tl.resolution
+            step_start_time = tl.time_at_measure(step_abs)
+            step_start_tick = tl.to_tick(step.measure, step.offset)
+            step_start_depth = self._compute_note_depth(
+                note,
+                step_start_tick,
+                step_start_time,
+                judge_time,
+                cell=float(step.cell),
+                width=float(step.width),
+            )
             step_time = tl.time_at_measure(step_end_abs)
             step_tick = tl.to_tick(step.measure, step.offset) + step.duration
             step_depth = self._compute_note_depth(
@@ -2386,6 +2495,34 @@ class PlayView3D(QWidget):
 
             if min(prev_depth, step_depth) >= DRAW_DEPTH_MAX:
                 break
+
+            if (
+                index > 0
+                and self._air_anchor_for_note(note) is None
+                and _depth_in_draw_range(step_start_depth)
+            ):
+                start_world_y = _air_path_world_y(step)
+                head_x, head_y, head_w, head_scale = self._air_path_screen_span_at(
+                    step.cell,
+                    step.width,
+                    step_start_depth,
+                    start_world_y,
+                    vanish_x,
+                    vanish_y,
+                    judge_y,
+                )
+                self._draw_air_wrapped_ground_head(
+                    painter,
+                    head_x,
+                    head_y,
+                    head_w,
+                    head_scale,
+                    alpha,
+                    step,
+                    step_start_depth,
+                    cell=step.cell,
+                    width=step.width,
+                )
 
             draw_depths = _sustain_draw_depths(prev_depth, step_depth)
             if draw_depths is None:
@@ -2426,18 +2563,21 @@ class PlayView3D(QWidget):
                 judge_y,
             )
 
-            self._draw_air_path_line(
+            self._draw_projected_sustain_body(
                 painter,
-                prev_x,
-                prev_y,
-                prev_w,
-                step_x,
-                step_y,
-                step_w,
+                step,
+                start_cell,
+                start_width,
+                draw_start_depth,
+                step.end_cell,
+                step.end_width,
+                draw_step_depth,
                 color,
                 alpha,
-                prev_scale,
-                step_scale,
+                start_world_y=start_world_y,
+                end_world_y=step_world_y,
+                start_width_factor=_air_path_width_factor(start_width),
+                end_width_factor=_air_path_width_factor(float(step.end_width)),
             )
 
             if (
@@ -2466,7 +2606,49 @@ class PlayView3D(QWidget):
         step_count: int,
         step: Note,
     ) -> bool:
-        return step.note_type in {NoteType.ASD, NoteType.ASX} or index == step_count - 1
+        return step.note_type == NoteType.ASD or index == step_count - 1
+
+    def _draw_air_wrapped_ground_head(
+        self,
+        painter: QPainter,
+        x: float,
+        y: float,
+        w: float,
+        scale: float,
+        alpha: int,
+        note: Note,
+        depth: float,
+        *,
+        cell: float,
+        width: float,
+    ) -> None:
+        wrapped = self._air_wrapped_ground_type(note)
+        if wrapped is None:
+            return
+
+        proxy = replace(note, note_type=wrapped)
+        color = get_note_color(NoteType.CHR if wrapped in AIR_WRAPPED_EX_HEAD_TYPES else wrapped)
+
+        if wrapped in AIR_WRAPPED_EX_HEAD_TYPES:
+            self._draw_extap_quad(painter, x, y, w, scale, color, alpha, proxy, depth, cell, width)
+        elif wrapped == NoteType.FLK:
+            self._draw_flick(painter, x, y, w, scale, color, alpha, proxy, depth, cell, width)
+        elif wrapped == NoteType.MNE:
+            self._draw_mine(painter, x, y, w, scale, color, alpha)
+        else:
+            self._draw_tap_quad(painter, x, y, w, scale, color, alpha, proxy, depth, cell, width)
+
+    def _air_wrapped_ground_type(self, note: Note) -> NoteType | None:
+        wrapped = getattr(note, "target_note", None)
+        if not isinstance(wrapped, str):
+            return None
+        try:
+            wrapped_type = NoteType(wrapped)
+        except ValueError:
+            return None
+        if wrapped_type in AIR_WRAPPED_GROUND_TYPES:
+            return wrapped_type
+        return None
 
     def _draw_air_trace(
         self,
@@ -2523,32 +2705,44 @@ class PlayView3D(QWidget):
         x, y, w, scale = self._air_trace_screen_span_at(
             start_cell, start_width, draw_depth, start_world_y, vanish_x, vanish_y, judge_y
         )
-        end_x, end_y, end_w, _ = self._air_trace_screen_span_at(
-            end_cell, end_width, draw_end_depth, end_world_y, vanish_x, vanish_y, judge_y
-        )
-        if not all(math.isfinite(value) for value in (x, y, w, end_x, end_y, end_w, scale)):
-            return
-        if w <= 0.0 or end_w <= 0.0:
-            return
-        max_coord = 1e6
-        if any(abs(value) > max_coord for value in (x, y, end_x, end_y)):
-            return
-
         trace_color = QColor(color.red(), color.green(), color.blue(), max(20, alpha // 2))
         trace_edge = QColor(color.red(), color.green(), color.blue(), alpha)
-        trace_poly = QPolygonF(
-            [
-                QPointF(x, y),
-                QPointF(end_x, end_y),
-                QPointF(end_x + end_w, end_y),
-                QPointF(x + w, y),
-            ]
+        self._draw_projected_sustain_body(
+            painter,
+            note,
+            start_cell,
+            start_width,
+            draw_depth,
+            end_cell,
+            end_width,
+            draw_end_depth,
+            trace_color,
+            alpha,
+            start_world_y=start_world_y,
+            end_world_y=end_world_y,
+            start_width_factor=_air_trace_width_factor_from_world_y(start_world_y),
+            end_width_factor=_air_trace_width_factor_from_world_y(end_world_y),
         )
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(trace_color))
-        painter.drawPolygon(trace_poly)
+        trace_corners = self._project_sustain_corners(
+            note,
+            start_cell,
+            start_width,
+            draw_depth,
+            end_cell,
+            end_width,
+            draw_end_depth,
+            start_world_y=start_world_y,
+            end_world_y=end_world_y,
+            start_width_factor=_air_trace_width_factor_from_world_y(start_world_y),
+            end_width_factor=_air_trace_width_factor_from_world_y(end_world_y),
+        )
+        if not _projected_polygon_is_bounded(trace_corners, self.width(), self.height()):
+            return
         painter.setPen(QPen(trace_edge, max(1, int(scale))))
-        painter.drawLine(QPointF(x + w / 2, y), QPointF(end_x + end_w / 2, end_y))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawLine(
+            (trace_corners[0] + trace_corners[1]) * 0.5, (trace_corners[2] + trace_corners[3]) * 0.5
+        )
 
         crush_interval = getattr(note, "crush_interval", getattr(note, "crush_tick", 0))
         if crush_interval > 0:
@@ -2589,163 +2783,6 @@ class PlayView3D(QWidget):
                 )
 
                 self._draw_air_action_bar_3d(painter, cx, cy, cw, c_scale, alpha, curr_depth)
-
-    def _draw_air_solid(
-        self,
-        painter: QPainter,
-        note: Note,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        judge_time: float,
-        depth: float,
-        end_depth: float,
-        vanish_x: float,
-        vanish_y: float,
-        judge_y: float,
-    ) -> None:
-        end_cell = getattr(note, "end_cell", note.cell)
-        end_width = getattr(note, "end_width", note.width)
-        draw_depths = _sustain_draw_depths(depth, end_depth)
-        if draw_depths is None:
-            return
-        draw_depth, draw_end_depth = draw_depths
-        start_world_y = _air_path_world_y(note)
-        end_world_y = _air_path_world_y(note, end=True)
-        start_cell, start_width, start_world_y, draw_depth = _clip_air_path_start(
-            note.cell,
-            note.width,
-            start_world_y,
-            depth,
-            end_cell,
-            end_width,
-            end_world_y,
-            end_depth,
-        )
-        x, y, w, scale = self._air_path_screen_span_at(
-            start_cell, start_width, draw_depth, start_world_y, vanish_x, vanish_y, judge_y
-        )
-        end_x, end_y, end_w, end_scale = self._air_path_screen_span_at(
-            end_cell, end_width, draw_end_depth, end_world_y, vanish_x, vanish_y, judge_y
-        )
-
-        self._draw_air_path_line(
-            painter,
-            x,
-            y,
-            w,
-            end_x,
-            end_y,
-            end_w,
-            color,
-            alpha,
-            scale,
-            end_scale,
-        )
-
-        if _depth_in_draw_range(depth):
-            painter.setPen(QPen(color.lighter(140), max(1, int(scale * 2))))
-            painter.setBrush(QColor(color.red(), color.green(), color.blue(), alpha))
-            painter.drawRoundedRect(
-                int(x),
-                int(y - w * 0.3),
-                int(w),
-                int(w * 0.6),
-                int(max(1, scale * 3)),
-                int(max(1, scale * 3)),
-            )
-
-    def _draw_heaven_hold(
-        self,
-        painter: QPainter,
-        note: Note,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        judge_time: float,
-        depth: float,
-        end_depth: float,
-        vanish_x: float,
-        vanish_y: float,
-        judge_y: float,
-    ) -> None:
-        end_cell = getattr(note, "end_cell", note.cell)
-        end_width = getattr(note, "end_width", note.width)
-        draw_depths = _sustain_draw_depths(depth, end_depth)
-        if draw_depths is None:
-            return
-        draw_depth, draw_end_depth = draw_depths
-        start_world_y = _air_path_world_y(note)
-        end_world_y = _air_path_world_y(note, end=True)
-        start_cell, start_width, start_world_y, draw_depth = _clip_air_path_start(
-            note.cell,
-            note.width,
-            start_world_y,
-            depth,
-            end_cell,
-            end_width,
-            end_world_y,
-            end_depth,
-        )
-        x, y, w, scale = self._air_path_screen_span_at(
-            start_cell, start_width, draw_depth, start_world_y, vanish_x, vanish_y, judge_y
-        )
-        end_x, end_y, end_w, end_scale = self._air_path_screen_span_at(
-            end_cell, end_width, draw_end_depth, end_world_y, vanish_x, vanish_y, judge_y
-        )
-
-        heaven_color = QColor(200, 100, 255, alpha)
-        self._draw_sustain_body(
-            painter,
-            x,
-            y,
-            w,
-            end_x,
-            end_y,
-            end_w,
-            heaven_color,
-            alpha,
-            scale,
-            end_scale,
-        )
-
-        if _depth_in_draw_range(depth):
-            self._draw_tap_quad(
-                painter,
-                x,
-                y,
-                w,
-                scale,
-                heaven_color,
-                alpha,
-                note,
-                depth,
-                cell=start_cell,
-                width=start_width,
-            )
-        if _depth_in_draw_range(draw_end_depth):
-            end_color = QColor(
-                heaven_color.red(), heaven_color.green(), heaven_color.blue(), alpha // 2
-            )
-            self._draw_tap_quad(
-                painter,
-                end_x,
-                end_y,
-                end_w,
-                end_scale,
-                end_color,
-                alpha // 2,
-                note,
-                draw_end_depth,
-                cell=end_cell,
-                width=end_width,
-            )
 
     def _draw_scrubber(self, painter: QPainter) -> None:
         if not self.chart:

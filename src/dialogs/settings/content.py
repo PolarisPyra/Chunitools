@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from functools import partial
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QPushButton,
     QSlider,
     QSpinBox,
@@ -43,10 +44,24 @@ from src.ui.theme.ui import (
     TRANSPARENT,
 )
 from src.utils.audio import VgmstreamValidation, validate_vgmstream_path
+from src.utils.vgmstream import VgmstreamDownloadError, download_vgmstream_cli
 
 LOGGER = logging.getLogger(__name__)
 
 _DATA_EXECUTABLE_NAMES: tuple[str, ...] = ("chusanApp", "chusanApp.exe")
+
+
+class _VgmstreamDownloadWorker(QObject):
+    finished = Signal(str)
+    failed = Signal(str)
+
+    def run(self) -> None:
+        try:
+            install_dir = download_vgmstream_cli()
+        except VgmstreamDownloadError as exc:
+            self.failed.emit(str(exc))
+        else:
+            self.finished.emit(str(install_dir))
 
 
 def open_settings(parent: QWidget | None = None) -> SettingsDialog:
@@ -72,6 +87,8 @@ class SettingsDialog(QDialog):
         self._data_valid: bool = False
         self._vgmstream_validation: str = VgmstreamValidation.NOT_FOUND
         self._vgmstream_detail: str = ""
+        self._vgmstream_download_thread: QThread | None = None
+        self._vgmstream_download_worker: _VgmstreamDownloadWorker | None = None
 
         self._build_ui()
         self._refresh_validation()
@@ -85,9 +102,7 @@ class SettingsDialog(QDialog):
 
         sidebar = QWidget()
         sidebar.setFixedWidth(200)
-        sidebar.setStyleSheet(
-            f"background: {SURFACE_NAV}; border-right: 1px solid {BORDER_PANEL};"
-        )
+        sidebar.setStyleSheet(f"background: {SURFACE_NAV}; border-right: 1px solid {BORDER_PANEL};")
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(0, 8, 0, 0)
 
@@ -147,17 +162,21 @@ class SettingsDialog(QDialog):
 
         layout.addSpacing(12)
 
-        layout.addWidget(self._build_path_row(
-            "Data Directory",
-            "CHUNITHM data files used by the browser and editor.",
-            "data_root",
-        ))
+        layout.addWidget(
+            self._build_path_row(
+                "Data Directory",
+                "CHUNITHM data files used by the browser and editor.",
+                "data_root",
+            )
+        )
 
-        layout.addWidget(self._build_path_row(
-            "vgmstream-cli Directory",
-            "Directory containing vgmstream-cli for audio decoding.",
-            "vgstreamcli_path",
-        ))
+        layout.addWidget(
+            self._build_path_row(
+                "vgmstream-cli Directory",
+                "Directory containing vgmstream-cli for audio decoding.",
+                "vgstreamcli_path",
+            )
+        )
 
         layout.addWidget(self._build_panel_widths())
         layout.addWidget(self._build_scroll_speed())
@@ -200,6 +219,15 @@ class SettingsDialog(QDialog):
         choose_btn.setFixedWidth(80)
         choose_btn.clicked.connect(partial(self._pick_folder, field_name))
         path_row.addWidget(choose_btn)
+
+        if field_name == "vgstreamcli_path":
+            download_btn = QPushButton("Download")
+            download_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            download_btn.setFixedWidth(96)
+            download_btn.setToolTip("Download vgmstream-cli for this operating system")
+            download_btn.clicked.connect(self._download_vgmstream)
+            path_row.addWidget(download_btn)
+            self._vgmstream_download_btn = download_btn
 
         layout.addLayout(path_row)
 
@@ -265,7 +293,9 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._scroll_slider, 1)
 
         self._scroll_label = QLabel(f"{self._settings.scroll_speed:.1f}")
-        self._scroll_label.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 12px; min-width: 36px;")
+        self._scroll_label.setStyleSheet(
+            f"color: {TEXT_PRIMARY}; font-size: 12px; min-width: 36px;"
+        )
         layout.addWidget(self._scroll_label)
 
         return group
@@ -285,12 +315,18 @@ class SettingsDialog(QDialog):
         desc.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px;")
         layout.addWidget(desc)
 
-        layout.addWidget(self._build_volume_slider(
-            "Hitsound Volume", "hitsound_volume",
-        ))
-        layout.addWidget(self._build_volume_slider(
-            "Music Volume", "music_volume",
-        ))
+        layout.addWidget(
+            self._build_volume_slider(
+                "Hitsound Volume",
+                "hitsound_volume",
+            )
+        )
+        layout.addWidget(
+            self._build_volume_slider(
+                "Music Volume",
+                "music_volume",
+            )
+        )
 
         layout.addStretch()
         return page
@@ -382,6 +418,65 @@ class SettingsDialog(QDialog):
         setattr(self._settings, name, value)
         self._settings.save()
         self.settings_changed.emit()
+
+    def _download_vgmstream(self) -> None:
+        if self._vgmstream_download_thread is not None:
+            return
+
+        download_btn = getattr(self, "_vgmstream_download_btn", None)
+        if download_btn is not None:
+            download_btn.setEnabled(False)
+            download_btn.setText("Downloading")
+
+        vg_valid_lbl = self.__dict__.get("vgstreamcli_path_valid_lbl")
+        if vg_valid_lbl is not None:
+            vg_valid_lbl.setText("Downloading vgmstream-cli...")
+            vg_valid_lbl.setStyleSheet("color: #f0a030; font-size: 11px;")
+            vg_valid_lbl.show()
+
+        worker = _VgmstreamDownloadWorker()
+        thread = QThread(self)
+        self._vgmstream_download_worker = worker
+        self._vgmstream_download_thread = thread
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_vgmstream_download_finished)
+        worker.failed.connect(self._on_vgmstream_download_failed)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._on_vgmstream_download_stopped)
+        thread.start()
+
+    def _on_vgmstream_download_finished(self, install_dir: str) -> None:
+        self._update_setting("vgstreamcli_path", install_dir)
+        display = self.__dict__.get("vgstreamcli_path_display")
+        if display is not None:
+            display.setText(install_dir)
+        self._refresh_validation()
+        QMessageBox.information(
+            self,
+            "vgmstream ready",
+            f"Downloaded vgmstream-cli to:\n{install_dir}",
+        )
+
+    def _on_vgmstream_download_failed(self, message: str) -> None:
+        self._refresh_validation()
+        QMessageBox.warning(
+            self,
+            "vgmstream download failed",
+            message,
+        )
+
+    def _on_vgmstream_download_stopped(self) -> None:
+        self._vgmstream_download_thread = None
+        self._vgmstream_download_worker = None
+        download_btn = getattr(self, "_vgmstream_download_btn", None)
+        if download_btn is not None:
+            download_btn.setEnabled(True)
+            download_btn.setText("Download")
 
     def _refresh_validation(self) -> None:
         data_path = str(getattr(self._settings, "data_root", ""))

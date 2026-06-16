@@ -266,13 +266,8 @@ def create_menu_bar(window: MainWindow) -> None:  # noqa: PLR0915
             NoteType.ASD: "Air Slide",
             NoteType.ASC: "Air Slide Control",
         },
-        "Air Trace": {
-            NoteType.ALD: "Air Trace and Action",
-            NoteType.ASO: "Air Solid",
-        },
-        "Effects": {
-            NoteType.HHD: "Heaven Hold",
-            NoteType.HHX: "Heaven ExHold",
+        "Air Crush / Trace": {
+            NoteType.ALD: "Air Crush / Trace",
         },
     }
 

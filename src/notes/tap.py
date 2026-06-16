@@ -1,4 +1,4 @@
-"""Tap, ExTap (CRUSH), and Mine notes."""
+"""Tap, ExTap, and Mine notes."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ class Tap(Note):
 
 @dataclass(frozen=True, kw_only=True, slots=True, init=False)
 class ExTap(Note):
-    """CRUSH / ExTap note (CHR) — yellow/gold tap with double-hit mechanic."""
+    """ExTap / TapEx note (CHR)."""
 
     # Game format: "CHR\t%d\t%d\t%d\t%d\t%s\n"
     #              MS   OFF  CEL  WID  ANI

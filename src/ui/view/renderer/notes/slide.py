@@ -112,13 +112,14 @@ class SlideRendererMixin(RendererMixinSupport):
                 head_color,
             )
 
-        # Draw each step. Visible steps (SLD/SXD) get a colored tap;
-        # invisible steps (SLC/SXC) get a grey control point.
-        # Matches Rust: draw_slide → for step { if is_visible { draw_tap } else { draw_control_point } }
+        # The final endpoint gets a tap head. Intermediate visible steps are
+        # path starts, while invisible SLC/SXC steps are line controls.
         current_tick = timeline.note_tick(note)
-        for step in note.steps:
+        step_count = len(note.steps)
+        for index, step in enumerate(note.steps):
             current_tick += step.duration
-            self._draw_step_tap(painter, step, current_tick, current_position, timeline)
+            if self._slide_step_role(index, step_count, step) == NOTE_ROLE_END:
+                self._draw_step_tap(painter, step, current_tick, current_position, timeline)
 
     def _draw_slide_foreground_orphan(
         self,
@@ -217,6 +218,13 @@ class SlideRendererMixin(RendererMixinSupport):
 
     def _slide_start_color(self, note: Any) -> Any:
         return self.colors.ex_tap if note.note_type in (NoteType.SXD, NoteType.SXC) else self.colors.slide
+
+    def _slide_step_role(self, index: int, step_count: int, step: Any) -> str:
+        if index == step_count - 1:
+            return NOTE_ROLE_END
+        if getattr(step, "is_visible", True):
+            return NOTE_ROLE_START
+        return NOTE_ROLE_LINE_CONTROL
 
     def _slide_endpoint_color(self, note: Any) -> Any:
         # Steps within a slide chain always use normal slide blue/cyan.

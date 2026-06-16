@@ -78,7 +78,7 @@ class SlideTo(Note):
             end_width=ew,
             target_id="",
             animation=None,
-            is_visible=note_type in {"SLD", "SXD"},
+            is_visible=note_type in {NoteType.SLD, NoteType.SXD},
         )
 
     def get_extra_parts(self) -> list[str]:
@@ -142,7 +142,7 @@ class Slide(Note):
             end_width=ew,
             target_id="",
             animation=None,
-            is_visible=note_type in {"SLD", "SXD"},
+            is_visible=note_type in {NoteType.SLD, NoteType.SXD},
         )
         return cls(
             note_type=note_type,

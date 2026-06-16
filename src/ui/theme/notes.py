@@ -16,8 +16,6 @@ NOTE_HOLD_EX_HEAD = "#ff9f1a"
 NOTE_SLIDE_HEAD = "#00ccff"
 NOTE_AIR_ACTION = "#d13bff"
 NOTE_CYAN = "#00d5ff"
-NOTE_AIR_SOLID = "#45c4ff"
-NOTE_HEAVEN_HOLD = "#fff4a3"
 
 NOTE_COLORS = {
     NoteType.TAP: (NOTE_TAP, NOTE_TAP),
@@ -38,11 +36,7 @@ NOTE_COLORS = {
     NoteType.ALD: (NOTE_AIR_TRACE, NOTE_AIR_TRACE),
     NoteType.ASD: (NOTE_AIR_SLIDE, NOTE_AIR_SLIDE),
     NoteType.ASC: (NOTE_AIR_SLIDE, NOTE_AIR_SLIDE),
-    NoteType.ASX: (NOTE_AIR_ACTION, NOTE_AIR_ACTION),
     NoteType.AHX: (NOTE_AIR_ACTION, NOTE_AIR_ACTION),
-    NoteType.ASO: (NOTE_AIR_SOLID, NOTE_AIR_SOLID),
-    NoteType.HHD: (NOTE_HEAVEN_HOLD, NOTE_HEAVEN_HOLD),
-    NoteType.HHX: (NOTE_HEAVEN_HOLD, NOTE_CHR),
     NoteType.FLK: (NOTE_FLICK, NOTE_FLICK),
     NoteType.MNE: (NOTE_MINE, NOTE_MINE),
 }
@@ -55,7 +49,7 @@ TRACE_COLORS = {
 }
 
 def get_note_color(t: NoteType, mod: str | None = None) -> QColor:
-    if t in (NoteType.ALD, NoteType.ASD, NoteType.ASC, NoteType.ASX, NoteType.ASO) and mod in TRACE_COLORS and mod != "DEF":
+    if t in (NoteType.ALD, NoteType.ASD, NoteType.ASC) and mod in TRACE_COLORS and mod != "DEF":
         return QColor(TRACE_COLORS[mod])
     return QColor(NOTE_COLORS.get(t, ("#ffffff", "#ffffff"))[0])
 

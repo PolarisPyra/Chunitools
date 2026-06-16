@@ -42,9 +42,6 @@ _NOTE_COLORS: dict[NoteType, str] = {
     NoteType.ALD: "#33ff55",
     NoteType.ASD: "#34c759",
     NoteType.ASC: "#34c759",
-    NoteType.ASO: "#45c4ff",
-    NoteType.HHD: "#fff4a3",
-    NoteType.HHX: "#fff4a3",
 }
 
 
@@ -249,12 +246,9 @@ def _format_timeline(notes: list[Note], chart: Chart) -> str:
             NoteType.ADL: "AIR DL",
             NoteType.AHD: "A HOLD",
             NoteType.AHX: "A ACT",
-            NoteType.ALD: "A TRACE",
+            NoteType.ALD: "A CRUSH",
             NoteType.ASD: "A SLIDE",
             NoteType.ASC: "A CTRL",
-            NoteType.ASO: "SOLID",
-            NoteType.HHD: "HEAVEN",
-            NoteType.HHX: "H ACT",
         }
         display = display_map.get(note.note_type, label)
 
