@@ -350,7 +350,7 @@ def test_air_paths_use_explicit_chart_heights_not_default_fake_g0() -> None:
     assert _air_path_world_y(chain, end=True) == pytest.approx(116.5)
 
 
-def test_air_slide_endpoint_bar_uses_trace_height_not_action_height(monkeypatch) -> None:
+def test_air_slide_endpoint_bar_uses_trace_height(monkeypatch) -> None:
     app = QApplication.instance() or QApplication([])
     _ = app
     step = AirSlide(
@@ -391,7 +391,9 @@ def test_air_slide_endpoint_bar_uses_trace_height_not_action_height(monkeypatch)
     monkeypatch.setattr(
         view,
         "_draw_air_action_bar_3d",
-        lambda _painter, _x, y, _w, _scale, _alpha, depth: action_bars.append((y, depth)),
+        lambda _painter, _cell, _width, world_y, _alpha, depth: action_bars.append(
+            (world_y, depth)
+        ),
     )
 
     tl = chart.timeline
@@ -414,18 +416,27 @@ def test_air_slide_endpoint_bar_uses_trace_height_not_action_height(monkeypatch)
     )
 
     expected_depth = view._compute_depth(tl.time_at(1), judge_time)
-    _, expected_y, _, _ = view._air_path_screen_span_at(
-        0.0,
-        4.0,
-        expected_depth,
-        _air_path_world_y(chain, end=True),
-        640.0,
-        72.0,
-        648.0,
-    )
+    expected_world_y = _air_path_world_y(chain, end=True)
 
-    assert action_bars[-1] == (pytest.approx(expected_y), pytest.approx(expected_depth))
+    assert action_bars[-1] == (pytest.approx(expected_world_y), pytest.approx(expected_depth))
     assert len(action_bars) == 1
+
+
+def test_air_action_bar_uses_flat_world_projection_like_tap_notes() -> None:
+    app = QApplication.instance() or QApplication([])
+    _ = app
+    view = PlayView3D()
+    view.resize(1280, 720)
+    tap = Tap(note_type=NoteType.TAP, measure=0, offset=0, cell=4, width=4)
+    depth = -0.05
+
+    tap_corners = view._project_flat_note_corners(tap, 4.0, 4.0, depth)
+    action_corners = view._project_flat_note_corners_at_world_y(4.0, 4.0, depth, 0.0)
+
+    assert len(action_corners) == 4
+    for action_corner, tap_corner in zip(action_corners, tap_corners, strict=True):
+        assert action_corner.x() == pytest.approx(tap_corner.x())
+        assert action_corner.y() == pytest.approx(tap_corner.y())
 
 
 def test_air_slide_final_action_step_draws_one_3d_bar(monkeypatch) -> None:
@@ -465,7 +476,9 @@ def test_air_slide_final_action_step_draws_one_3d_bar(monkeypatch) -> None:
     monkeypatch.setattr(
         view,
         "_draw_air_action_bar_3d",
-        lambda _painter, _x, y, _w, _scale, _alpha, depth: action_bars.append((y, depth)),
+        lambda _painter, _cell, _width, world_y, _alpha, depth: action_bars.append(
+            (world_y, depth)
+        ),
     )
 
     tl = chart.timeline
@@ -606,7 +619,9 @@ def test_parented_asc_chain_does_not_draw_floating_end_cap(monkeypatch) -> None:
     monkeypatch.setattr(
         view,
         "_draw_air_action_bar_3d",
-        lambda _painter, _x, y, _w, _scale, _alpha, depth: action_bars.append((y, depth)),
+        lambda _painter, _cell, _width, world_y, _alpha, depth: action_bars.append(
+            (world_y, depth)
+        ),
     )
 
     tl = chart.timeline
@@ -1102,12 +1117,10 @@ def test_parented_asc_chain_starts_path_from_chr_anchor(monkeypatch) -> None:
         648.0,
     )
 
-    assert projected_world_y[:3] == [
+    assert projected_world_y == [
         pytest.approx(_air_path_world_y(chain)),
         pytest.approx(0.0),
-        pytest.approx(_air_path_world_y(chain)),
     ]
-    assert projected_world_y[3] == pytest.approx(_air_path_world_y(chain, end=True))
 
 
 def test_timeline_anchored_chr_air_slide_does_not_draw_fake_start_cap(monkeypatch) -> None:
@@ -1636,15 +1649,13 @@ def test_play_view_clips_crossing_air_paths_to_judge_line(
     view.draw_chart(chart)
     view.set_current_pos(0.2)
 
-    projected_depths: list[float] = []
+    sustain_depths: list[float] = []
     head_depths: list[float] = []
-    original_project = view._air_path_screen_span_at
 
-    def record_air_projection(*args):
-        projected_depths.append(args[2])
-        return original_project(*args)
+    def record_sustain_projection(*args, **_kwargs):
+        sustain_depths.extend([args[4], args[7]])
 
-    monkeypatch.setattr(view, "_air_path_screen_span_at", record_air_projection)
+    monkeypatch.setattr(view, "_draw_projected_sustain_body", record_sustain_projection)
     monkeypatch.setattr(
         view,
         "_draw_tap_quad",
@@ -1656,8 +1667,8 @@ def test_play_view_clips_crossing_air_paths_to_judge_line(
     image.fill(QColor(0, 0, 0, 0))
     view.render(image)
 
-    assert any(depth == pytest.approx(0.0) for depth in projected_depths)
-    assert any(depth > 0.0 for depth in projected_depths)
+    assert any(depth == pytest.approx(0.0) for depth in sustain_depths)
+    assert any(depth > 0.0 for depth in sustain_depths)
     assert all(depth > DRAW_DEPTH_MIN for depth in head_depths)
 
 

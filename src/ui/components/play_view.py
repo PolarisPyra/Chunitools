@@ -334,14 +334,6 @@ def _air_path_world_y(note: Note, *, end: bool = False) -> float | None:
     return None
 
 
-def _air_action_marker_world_y(note: Note, *, end: bool = False) -> float | None:
-    source = _air_path_source(note, end=end)
-    attr = "target_height" if end else "starting_height"
-    if hasattr(source, attr):
-        return _air_action_world_y_from_chart_height(float(getattr(source, attr)))
-    return None
-
-
 def _note_screen_span(
     cell: float, width: float, vanish_x: float, scale: float
 ) -> tuple[float, float]:
@@ -797,20 +789,6 @@ class PlayView3D(QWidget):
             )
         screen_x, screen_w = _air_path_screen_span(cell, width, vanish_x, scale)
         return screen_x, screen_y, screen_w, scale
-
-    def _air_action_screen_span_at(
-        self,
-        cell: float,
-        width: float,
-        depth: float,
-        world_y: float | None,
-        vanish_x: float,
-        vanish_y: float,
-        judge_y: float,
-    ) -> tuple[float, float, float, float]:
-        return self._air_path_screen_span_at(
-            cell, width, depth, world_y, vanish_x, vanish_y, judge_y
-        )
 
     def _air_trace_screen_span_at(
         self,
@@ -1298,19 +1276,35 @@ class PlayView3D(QWidget):
     def _project_flat_note_corners(
         self, note: Note, cell: float, width: float, depth: float
     ) -> list[QPointF]:
+        is_big = note.note_type in {NoteType.HLD, NoteType.HXD, NoteType.SLD, NoteType.SXD}
+        return self._project_flat_note_corners_at_world_y(
+            cell,
+            width,
+            depth,
+            self._get_world_y(note),
+            is_big=is_big,
+        )
+
+    def _project_flat_note_corners_at_world_y(
+        self,
+        cell: float,
+        width: float,
+        depth: float,
+        world_y: float,
+        *,
+        is_big: bool = False,
+    ) -> list[QPointF]:
         w, h = self.width(), self.height()
-        wy = self._get_world_y(note)
         w_x0 = cell * LANE_WIDTH - FIELD_HALF
         w_x1 = (cell + width) * LANE_WIDTH - FIELD_HALF
         z = _compact_depth_to_z(depth)
-        is_big = note.note_type in {NoteType.HLD, NoteType.HXD, NoteType.SLD, NoteType.SXD}
         half_depth = (RENDER_BIG_NOTE_DEPTH if is_big else RENDER_NOTE_DEPTH) / 2.0
         z_far = z - half_depth
         z_near = z + half_depth
-        pt0 = _project_point(w_x0, wy, z_far, w, h)
-        pt1 = _project_point(w_x1, wy, z_far, w, h)
-        pt2 = _project_point(w_x1, wy, z_near, w, h)
-        pt3 = _project_point(w_x0, wy, z_near, w, h)
+        pt0 = _project_point(w_x0, world_y, z_far, w, h)
+        pt1 = _project_point(w_x1, world_y, z_far, w, h)
+        pt2 = _project_point(w_x1, world_y, z_near, w, h)
+        pt3 = _project_point(w_x0, world_y, z_near, w, h)
         return [QPointF(*pt0), QPointF(*pt1), QPointF(*pt2), QPointF(*pt3)]
 
     def _project_sustain_corners(
@@ -2134,53 +2128,32 @@ class PlayView3D(QWidget):
     def _draw_air_action_bar_3d(
         self,
         painter: QPainter,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
+        cell: float,
+        width: float,
+        world_y: float,
         alpha: int,
         depth: float,
     ) -> None:
-        note_h = _projected_note_height(depth, self.width(), self.height())
-        bar_h = max(note_h * 2.0, 8.0)
-        top = y - bar_h / 2
-        bottom = y + bar_h / 2
-        skew = min(w * 0.12, max(2.0, 8.0 * scale))
+        if painter is None:
+            return
+        corners = self._project_flat_note_corners_at_world_y(cell, width, depth, world_y)
+        if not all(math.isfinite(point.x()) and math.isfinite(point.y()) for point in corners):
+            return
+
+        scale = _projection_for_depth(depth, self.width(), self.height())[0]
+        body = QPolygonF(corners)
+        fill = QColor(231, 92, 255, alpha)
         edge = max(1, int(scale * 2))
-
-        body = QPolygonF(
-            [
-                QPointF(x + skew, top),
-                QPointF(x + w - skew, top),
-                QPointF(x + w, y),
-                QPointF(x + w - skew, bottom),
-                QPointF(x + skew, bottom),
-                QPointF(x, y),
-            ]
-        )
-        grad = QLinearGradient(x, top, x, bottom)
-        grad.setColorAt(0.0, QColor(110, 0, 160, max(0, alpha // 2)))
-        grad.setColorAt(0.35, QColor(231, 92, 255, alpha))
-        grad.setColorAt(0.5, QColor(255, 180, 255, min(255, alpha + 40)))
-        grad.setColorAt(0.65, QColor(231, 92, 255, alpha))
-        grad.setColorAt(1.0, QColor(110, 0, 160, max(0, alpha // 2)))
-
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(grad))
+        painter.setBrush(fill)
         painter.drawPolygon(body)
 
         highlight = QColor(255, 230, 255, min(255, alpha + 30))
         shadow = QColor(90, 0, 140, max(0, alpha // 2))
         painter.setPen(QPen(highlight, edge))
-        painter.drawLine(
-            QPointF(x + skew, top),
-            QPointF(x + w - skew, top),
-        )
+        painter.drawLine(corners[0], corners[1])
         painter.setPen(QPen(shadow, edge))
-        painter.drawLine(
-            QPointF(x + skew, bottom),
-            QPointF(x + w - skew, bottom),
-        )
+        painter.drawLine(corners[3], corners[2])
 
     def _draw_air_hold_segment(
         self,
@@ -2218,9 +2191,6 @@ class PlayView3D(QWidget):
         )
         x, y, w, scale = self._air_path_screen_span_at(
             start_cell, start_width, draw_depth, start_world_y, vanish_x, vanish_y, judge_y
-        )
-        end_x, end_y, end_w, end_scale = self._air_path_screen_span_at(
-            note.cell, note.width, draw_end_depth, end_world_y, vanish_x, vanish_y, judge_y
         )
 
         self._draw_air_lift_if_needed(
@@ -2271,7 +2241,14 @@ class PlayView3D(QWidget):
             )
 
         if note.note_type != NoteType.AHX and _depth_in_draw_range(end_depth):
-            self._draw_air_action_bar_3d(painter, end_x, end_y, end_w, end_scale, alpha, end_depth)
+            self._draw_air_action_bar_3d(
+                painter,
+                float(note.cell),
+                float(note.width),
+                end_world_y if end_world_y is not None else 0.0,
+                alpha,
+                end_depth,
+            )
 
     def _draw_air_slide(
         self,
@@ -2327,9 +2304,6 @@ class PlayView3D(QWidget):
             )
             x, y, w, scale = self._air_path_screen_span_at(
                 start_cell, start_width, draw_depth, start_world_y, vanish_x, vanish_y, judge_y
-            )
-            end_x, end_y, end_w, end_scale = self._air_path_screen_span_at(
-                end_cell, end_width, draw_end_depth, end_world_y, vanish_x, vanish_y, judge_y
             )
             self._draw_air_lift_if_needed(
                 painter,
@@ -2393,10 +2367,9 @@ class PlayView3D(QWidget):
             if _depth_in_draw_range(end_depth):
                 self._draw_air_action_bar_3d(
                     painter,
-                    end_x,
-                    end_y,
-                    end_w,
-                    end_scale,
+                    end_cell,
+                    end_width,
+                    end_world_y if end_world_y is not None else 0.0,
                     alpha,
                     end_depth,
                 )
@@ -2544,24 +2517,6 @@ class PlayView3D(QWidget):
                 step_world_y,
                 step_depth,
             )
-            prev_x, prev_y, prev_w, prev_scale = self._air_path_screen_span_at(
-                start_cell,
-                start_width,
-                draw_start_depth,
-                start_world_y,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
-            step_x, step_y, step_w, step_scale = self._air_path_screen_span_at(
-                step.end_cell,
-                step.end_width,
-                draw_step_depth,
-                step_world_y,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
 
             self._draw_projected_sustain_body(
                 painter,
@@ -2587,10 +2542,9 @@ class PlayView3D(QWidget):
             ):
                 self._draw_air_action_bar_3d(
                     painter,
-                    step_x,
-                    step_y,
-                    step_w,
-                    step_scale,
+                    float(step.end_cell),
+                    float(step.end_width),
+                    step_world_y if step_world_y is not None else 0.0,
                     alpha,
                     step_depth,
                 )
@@ -2772,17 +2726,15 @@ class PlayView3D(QWidget):
                 target_height = float(getattr(note, "target_height", start_height))
                 curr_height = _lerp(start_height, target_height, progress)
                 curr_world_y = _air_trace_world_y_from_g0(_chart_air_height_to_g0(curr_height))
-                cx, cy, cw, c_scale = self._air_action_screen_span_at(
+
+                self._draw_air_action_bar_3d(
+                    painter,
                     curr_cell,
                     curr_width,
-                    curr_depth,
                     curr_world_y,
-                    vanish_x,
-                    vanish_y,
-                    judge_y,
+                    alpha,
+                    curr_depth,
                 )
-
-                self._draw_air_action_bar_3d(painter, cx, cy, cw, c_scale, alpha, curr_depth)
 
     def _draw_scrubber(self, painter: QPainter) -> None:
         if not self.chart:
