@@ -91,11 +91,12 @@ def test_note_screen_span_keeps_chart_cell_center_with_game_lane_units() -> None
     assert x + width / 2.0 == pytest.approx(full_lane_width / 2.0)
 
 
-def test_sustain_depths_clip_crossing_segments_at_judge_line() -> None:
+def test_sustain_depths_clip_crossing_segments_at_near_draw_limit() -> None:
     start_depth, end_depth = _sustain_draw_depths(-2.0, 8.0)
 
-    assert start_depth == pytest.approx(0.0)
+    assert start_depth == pytest.approx(DRAW_DEPTH_MIN)
     assert end_depth == pytest.approx(8.0)
+    assert _sustain_draw_depths(-0.5, 8.0) == pytest.approx((-0.5, 8.0))
     assert _sustain_draw_depths(2.0, 8.0) == pytest.approx((2.0, 8.0))
     assert _sustain_draw_depths(-4.0, -2.0) is None
 
@@ -112,10 +113,10 @@ def test_air_path_start_clipping_interpolates_lane_width_and_height() -> None:
         6.0,
     )
 
-    assert cell == pytest.approx(1.0)
-    assert width == pytest.approx(2.5)
-    assert world_y == pytest.approx(50.0)
-    assert depth == pytest.approx(0.0)
+    assert cell == pytest.approx(0.375)
+    assert width == pytest.approx(2.1875)
+    assert world_y == pytest.approx(18.75)
+    assert depth == pytest.approx(DRAW_DEPTH_MIN)
 
 
 def test_projection_matches_recovered_camera() -> None:
@@ -1598,7 +1599,7 @@ def test_play_view_keeps_crossing_sustains_but_culls_past_taps(monkeypatch) -> N
     assert drawn_bodies
 
 
-def test_play_view_clips_crossing_air_paths_to_judge_line(
+def test_play_view_clips_crossing_air_paths_to_near_draw_limit(
     monkeypatch,
 ) -> None:
     app = QApplication.instance() or QApplication([])
@@ -1667,7 +1668,7 @@ def test_play_view_clips_crossing_air_paths_to_judge_line(
     image.fill(QColor(0, 0, 0, 0))
     view.render(image)
 
-    assert any(depth == pytest.approx(0.0) for depth in sustain_depths)
+    assert any(depth == pytest.approx(DRAW_DEPTH_MIN) for depth in sustain_depths)
     assert any(depth > 0.0 for depth in sustain_depths)
     assert all(depth > DRAW_DEPTH_MIN for depth in head_depths)
 

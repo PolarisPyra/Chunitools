@@ -363,10 +363,10 @@ def _sustain_draw_depths(start_depth: float, end_depth: float) -> tuple[float, f
 
     draw_start = start_depth
     draw_end = end_depth
-    if start_depth < 0.0 < end_depth:
-        draw_start = 0.0
-    elif end_depth < 0.0 < start_depth:
-        draw_end = 0.0
+    if start_depth < DRAW_DEPTH_MIN < end_depth:
+        draw_start = DRAW_DEPTH_MIN
+    elif end_depth < DRAW_DEPTH_MIN < start_depth:
+        draw_end = DRAW_DEPTH_MIN
     if start_depth < DRAW_DEPTH_MAX < end_depth:
         draw_end = DRAW_DEPTH_MAX
     elif end_depth < DRAW_DEPTH_MAX < start_depth:
@@ -382,12 +382,12 @@ def _clip_sustain_start(
     end_width: float,
     end_depth: float,
 ) -> tuple[float, float, float]:
-    if start_depth < 0.0 < end_depth:
-        alpha = (0.0 - start_depth) / (end_depth - start_depth)
+    if start_depth < DRAW_DEPTH_MIN < end_depth:
+        alpha = (DRAW_DEPTH_MIN - start_depth) / (end_depth - start_depth)
         return (
             _lerp(start_cell, end_cell, alpha),
             _lerp(start_width, end_width, alpha),
-            0.0,
+            DRAW_DEPTH_MIN,
         )
     return start_cell, start_width, start_depth
 
@@ -402,8 +402,8 @@ def _clip_air_path_start(
     end_world_y: float | None,
     end_depth: float,
 ) -> tuple[float, float, float | None, float]:
-    if start_depth < 0.0 < end_depth:
-        alpha = (0.0 - start_depth) / (end_depth - start_depth)
+    if start_depth < DRAW_DEPTH_MIN < end_depth:
+        alpha = (DRAW_DEPTH_MIN - start_depth) / (end_depth - start_depth)
         world_y = start_world_y
         if start_world_y is not None and end_world_y is not None:
             world_y = _lerp(start_world_y, end_world_y, alpha)
@@ -411,7 +411,7 @@ def _clip_air_path_start(
             _lerp(start_cell, end_cell, alpha),
             _lerp(start_width, end_width, alpha),
             world_y,
-            0.0,
+            DRAW_DEPTH_MIN,
         )
     return start_cell, start_width, start_world_y, start_depth
 
