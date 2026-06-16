@@ -112,7 +112,7 @@ wheels = [
 
 [[package]]
 name = "chunitools"
-version = "0.3.0"
+version = "1.0.0-alpha.2"
 source = { editable = "." }
 dependencies = [
     { name = "pillow" },
