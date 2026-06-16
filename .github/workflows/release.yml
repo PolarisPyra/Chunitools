@@ -57,9 +57,28 @@ jobs:
           path: chunitools_macos_apple_silicon.tar.gz
           if-no-files-found: error
 
-  # macOS Intel build is temporarily disabled due to GitHub API rate limits
-  # when multiple macOS jobs hit the vgmstream release API simultaneously.
-  # To re-enable, pass GITHUB_TOKEN to _latest_tag() or pin --tag r2117.
+  build-macos-intel:
+    name: macOS Intel
+    runs-on: macos-13
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - run: brew install libxml2 2>/dev/null || true
+      - run: uv sync
+      - run: python3 scripts/download_vgmstream.py macos
+      - run: uv run pyinstaller --noconfirm chunitools.spec
+      - run: |
+          mkdir -p chunitools_macos_intel
+          cp dist/chunitools chunitools_macos_intel/
+          tar czf chunitools_macos_intel.tar.gz chunitools_macos_intel/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chunitools_macos_intel
+          path: chunitools_macos_intel.tar.gz
+          if-no-files-found: error
 
   build-windows:
     name: Windows
@@ -84,7 +103,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: [build-linux, build-macos-apple-silicon, build-windows]
+    needs: [build-linux, build-macos-apple-silicon, build-macos-intel, build-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -102,4 +121,5 @@ jobs:
           files: |
             chunitools_linux.tar.gz
             chunitools_macos_apple_silicon.tar.gz
+            chunitools_macos_intel.tar.gz
             chunitools_windows.zip
