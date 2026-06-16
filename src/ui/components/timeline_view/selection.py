@@ -9,6 +9,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QPainter, QPen
 
 from src.core.const import AIR_NOTE_TYPES, NoteType
+from src.notes import AirSlideStart, Slide, SlideTo
 from src.ui import theme
 from src.ui.components.timeline_view.constants import (
     MAX_VISIBLE_LOOKBACK_MEASURES,
@@ -77,8 +78,6 @@ class TimelineSelectionMixin:
         timeline = self.chart.timeline
         best_note: Note | None = None
         best_distance: float | None = None
-
-        from src.notes import AirSlideStart, Slide
 
         def _test_note(n: Note, abs_pos_override: float | None = None) -> None:
             nonlocal best_distance, best_note
@@ -163,8 +162,6 @@ class TimelineSelectionMixin:
         if not self.chart:
             return []
 
-        from src.notes import AirSlideStart, Slide
-
         projection = self.projection
         current_pos = self._get_render_pos()
         chart_width = projection.x(self.total_lanes)
@@ -175,8 +172,7 @@ class TimelineSelectionMixin:
         matches: list[Note] = []
 
         def _test_rect(n, note_y: float) -> None:
-            from src.notes import SlideTo as _SlideTo
-            if isinstance(n, _SlideTo):
+            if isinstance(n, SlideTo):
                 cell_attr = n.end_cell
                 width_attr = n.end_width
             else:
@@ -212,8 +208,6 @@ class TimelineSelectionMixin:
     ) -> None:
         if self.chart is None:
             return
-
-        from src.notes import SlideTo
 
         timeline = self.chart.timeline
 

@@ -10,10 +10,10 @@ from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygon
 
 from src.core.const import AIR_ARROW_NOTES, GROUND_NOTE_TYPES, NoteType
 from src.notes.air import AirSlideStart
+from src.ui.components.timeline_view.notes.support import RendererMixinSupport
 from src.ui.theme.color_profile import GradientColor
 from src.ui.theme.notes import get_action_bar_color, get_note_color
 from src.ui.view import timeline_compat
-from src.ui.view.renderer.notes.support import RendererMixinSupport
 
 NOTE_ROLE_START = "ST"
 NOTE_ROLE_LINE_CONTROL = "LC"

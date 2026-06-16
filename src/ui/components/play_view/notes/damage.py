@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
 
-from src.core.const import NoteType
 from src.ui.components.play_view.geometry import (
     _depth_in_draw_range,
     _projection_for_depth,
@@ -16,22 +15,7 @@ from src.ui.components.play_view.geometry import (
 if TYPE_CHECKING:
     from src.notes import Note
 
-AIR_WRAPPED_GROUND_TYPES = {
-    NoteType.TAP,
-    NoteType.CHR,
-    NoteType.FLK,
-    NoteType.MNE,
-    NoteType.HLD,
-    NoteType.HXD,
-    NoteType.SLD,
-    NoteType.SLC,
-    NoteType.SXD,
-    NoteType.SXC,
-}
-AIR_WRAPPED_EX_HEAD_TYPES = {NoteType.CHR, NoteType.HXD, NoteType.SXD, NoteType.SXC}
-
-
-class PlayViewGroundNotesMixin:
+class PlayViewDamageNotesMixin:
     def _draw_flat_note_quad(
         self,
         painter: QPainter,
@@ -127,43 +111,4 @@ class PlayViewGroundNotesMixin:
         painter.setPen(QPen(QColor(255, 100, 100, alpha), max(1, int(scale * 1.5))))
         painter.drawLine(cx - r // 2, cy - r // 2, cx + r // 2, cy + r // 2)
         painter.drawLine(cx + r // 2, cy - r // 2, cx - r // 2, cy + r // 2)
-    def _draw_flick(
-        self,
-        painter: QPainter,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        note: Note,
-        depth: float,
-        cell: float | None = None,
-        width: float | None = None,
-    ) -> None:
-        if not _depth_in_draw_range(depth):
-            return
-        c_val = cell if cell is not None else float(note.cell)
-        w_val = width if width is not None else float(note.width)
-        corners = self._project_flat_note_corners(note, c_val, w_val, depth)
-        poly = QPolygonF(corners)
 
-        painter.setPen(QPen(color.lighter(130), max(1, int(scale * 2))))
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), alpha))
-        painter.drawPolygon(poly)
-
-        left_mid = (corners[0] + corners[3]) * 0.5
-        right_mid = (corners[1] + corners[2]) * 0.5
-        center = (left_mid + right_mid) * 0.5
-
-        painter.setPen(QPen(QColor(255, 255, 255, alpha), max(1, int(scale * 1.5))))
-        dx = 3 * scale
-        dy = 4 * scale
-        painter.drawLine(
-            QPointF(center.x() - dx, center.y() - dy),
-            QPointF(center.x() + dx, center.y()),
-        )
-        painter.drawLine(
-            QPointF(center.x() - dx, center.y() + dy),
-            QPointF(center.x() + dx, center.y()),
-        )

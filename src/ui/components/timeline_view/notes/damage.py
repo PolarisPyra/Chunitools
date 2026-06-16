@@ -5,7 +5,7 @@ from typing import Any
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QLinearGradient, QPainter, QPainterPath, QPen
 
-from src.ui.view.renderer.notes.support import RendererMixinSupport
+from src.ui.components.timeline_view.notes.support import RendererMixinSupport
 
 
 class DamageRendererMixin(RendererMixinSupport):

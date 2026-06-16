@@ -6,7 +6,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QBrush, QLinearGradient, QPainter
 
 from src.core.const import NoteType
-from src.ui.view.renderer.notes.support import RendererMixinSupport
+from src.ui.components.timeline_view.notes.support import RendererMixinSupport
 
 
 class HoldRendererMixin(RendererMixinSupport):

@@ -16,6 +16,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QWidget
 
 from src.engine.soflan import SoflanProjector
+from src.ui.components.note_debug_overlay_3d import NoteDebugOverlay3D
 from src.ui.components.play_view.notes import PlayViewNotesMixin
 from src.ui.components.play_view.playfield import PlayViewPlayfieldMixin
 
@@ -91,8 +92,6 @@ class PlayView3D(PlayViewNotesMixin, PlayViewPlayfieldMixin, QWidget):
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setInterval(REPAINT_INTERVAL_MS)
         self._refresh_timer.timeout.connect(self.update)
-
-        from src.ui.components.note_debug_overlay_3d import NoteDebugOverlay3D  # noqa: PLC0415
 
         self._debug_overlay = NoteDebugOverlay3D(self)
         self._debug_overlay.set_play_view(self)

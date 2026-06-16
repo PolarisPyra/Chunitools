@@ -1,4 +1,4 @@
-## Project: chunitools v0.2.10
+## Project: chunitools v0.2.11
 
 A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and editor built with Python 3.10+ and PySide6 (Qt6).
 
@@ -90,11 +90,8 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 │       │   │   ├── geometry.py         # 3D projection/depth/clipping helpers
 │       │   │   └── notes/
 │       │   │       ├── __init__.py     # Exports PlayViewNotesMixin
-│       │   │       ├── mixin.py        # Composes note-renderer mixins
-│       │   │       ├── dispatch.py     # 3D note visibility, ordering, dispatch
-│       │   │       ├── ground.py       # 3D TAP/CHR/MNE/FLK drawing
-│       │   │       ├── sustain.py      # 3D HLD/SLD bodies and clipped slide segments
-│       │   │       └── air.py          # 3D air arrows, air hold, air slide, air trace
+│       │   │       ├── air.py, damage.py, flick.py
+│       │   │       └── hold.py, slide.py, support.py
 │       │   ├── timeline_view/          # 2D timeline/chart viewport package
 │       │   │   ├── __init__.py         # Exports ChartViewport, DEFAULT_VIEW_LANE_WIDTH
 │       │   │   ├── constants.py        # Timeline viewport sizing/scroll constants
@@ -102,7 +99,11 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 │       │   │   ├── render.py           # 2D paint/export/render-segment orchestration
 │       │   │   ├── interaction.py      # Mouse, wheel, resize interaction
 │       │   │   ├── selection.py        # Note picking, selection, placement previews
-│       │   │   └── scroll.py           # Scrollbar, zoom, jump/select measure helpers
+│       │   │   ├── scroll.py           # Scrollbar, zoom, jump/select measure helpers
+│       │   │   └── notes/              # 2D per-note-type renderer mixins
+│       │   │       ├── air.py, damage.py, flick.py
+│       │   │       ├── hold.py, slide.py, support.py
+│       │   │       └── __init__.py
 │       │   ├── picker.py               # Chart browser/selector
 │       │   ├── picker_model.py         # Chart list model
 │       │   ├── picker_delegate.py      # Chart list delegate
@@ -117,10 +118,6 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 │       │   ├── timeline_compat.py  # Timeline backward compat
 │       │   ├── export.py           # Chart → image export
 │       │   └── renderer/
-│       │       ├── notes/          # Per-note-type renderers
-│       │       │   ├── air.py, damage.py, flick.py, heaven.py
-│       │       │   ├── hold.py, slide.py, support.py
-│       │       │   └── __init__.py
 │       │       └── base.py
 │       └── window/
 │           ├── window.py            # MainWindow — top-level app
@@ -180,7 +177,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 
 - **C2S parser:** `src/core/read.py` uses `C2sParser` with explicit `HEADER_TAGS`, `TIMING_TAGS`, and `METADATA_MAP`. Parsing is line-classification first, then note construction, slide/air-slide chaining, and air-anchor resolution.
 - **Note construction:** `src/notes/schema.py` defines per-`NoteType` parse fields; `src/notes/factory.py` owns explicit parse/build dispatch. Keep note construction explicit; do not use `**base`, `**extras`, or `**kwargs` splatting.
-- **Timeline renderer:** `src/ui/view/chart_renderer.py` orchestrates the 2D renderer stack under `src/ui/view/renderer/`. The interactive viewport lives in `src/ui/components/timeline_view/`.
+- **Timeline renderer:** `src/ui/view/chart_renderer.py` orchestrates the 2D renderer stack. The interactive viewport and 2D note renderer mixins live in `src/ui/components/timeline_view/`, including `timeline_view/notes/`.
 - **3D play renderer:** `src/ui/components/play_view/` is the 3D package. `view.py` owns the QWidget shell, `playfield.py` owns field/judge/scrubber drawing, `geometry.py` owns projection and clipping math, and `notes/` owns per-category 3D note rendering.
 - **3D clipping rule:** sustain, slide, air hold, air slide, and air trace bodies must clip in chart-space before projection. Do not clamp depth alone; interpolate cell/width/height at the clipped depth to avoid folded/compressed slide bodies.
 - **Air wrapped ground heads:** `AIR_WRAPPED_GROUND_TYPES` in `play_view/notes/air.py` is renderer terminology for ground-style heads drawn under air paths. It is not a separate C2S note category.
@@ -189,7 +186,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 
 - **Notes:** Frozen dataclasses inheriting from abstract `Note` base. Each subclass implements `get_extra_parts()` for serialization. Factory dispatch in `notes/factory.py` handles both parser and editor construction.
 - **C2S parser:** `C2sParser` in `core/read.py` classifies lines into header/timing/note buckets before chaining slide segments and resolving air anchors. Keep parser terminology aligned with `NoteType` names and game-engine categories.
-- **Render packages:** `ui/components/play_view/` is the 3D playfield; `ui/components/timeline_view/` is the 2D interactive timeline viewport. Do not recreate old flat modules like `play_view.py`, `play_view_notes.py`, or `viewport.py`.
+- **Render packages:** `ui/components/play_view/` is the 3D playfield; `ui/components/timeline_view/` is the 2D interactive timeline viewport and 2D note renderer package. Do not recreate old flat modules like `play_view.py`, `play_view_notes.py`, or `viewport.py`, and do not put timeline note renderers back under `ui/view/renderer/notes/`.
 - **Editor mutations:** Immutable note copies via `dataclasses.replace()`. `add_note`/`remove_notes`/`move_note` in `core/editor.py` handle chart mutation with sorting and timeline cache invalidation.
 - **Playback controller:** QTimer-driven with precise timing, hitsound trigger queue, audio sync offset slewing, and debounced seeking.
 - **PlaybackCoordinator:** Glues PlaybackController (timing) → AudioEngine (hitsounds) → MusicStreamPlayer (background music) → audio asset resolution.
@@ -198,15 +195,16 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 
 ### Versioning
 
-- **Always use SemVer** (semver.org). Current: 0.2.10. For 0.x, bump MINOR for breaking internal API changes, PATCH for bugfixes/refactors that don't change public interfaces. Tag every release with `v<VERSION>` (e.g., `v0.2.10`) and push tags to origin. Commit version bumps separately as `v<VERSION>`.
+- **Always use SemVer** (semver.org). Current: 0.2.11. For 0.x, bump MINOR for breaking internal API changes, PATCH for bugfixes/refactors that don't change public interfaces. Tag every release with `v<VERSION>` (e.g., `v0.2.11`) and push tags to origin. Commit version bumps separately as `v<VERSION>`.
 
 ## Rules
 
 - **Never push to git** unless explicitly told to. Do not push even after committing — wait for explicit instruction.
 - Keep Python import blocks sorted and formatted with Ruff/isort conventions; do **not** leave Ruff I001 cleanup for the user.
+- Keep imports at module top level. Do not sprinkle imports inside functions or methods unless there is a documented circular-import or heavyweight optional dependency reason; type-only imports belong under `if TYPE_CHECKING:`.
 - Run `ruff check .` before committing changes to ensure lint passes.
 - Use basedpyright for type checking (`basedpyright src/`).
-- Do not add or write tests unless explicitly requested. Prefer direct scripts, render smoke checks, Ruff, and basedpyright for routine verification.
+- Do not add or write tests unless explicitly requested. Do not run render smoke checks unless explicitly requested. Prefer direct scripts, compile/import checks, Ruff, and basedpyright for routine verification.
 - The `.c2s` format uses 1-indexed measures in BPM_DEF but 0-indexed in note files — be aware when parsing.
 
 ### Architecture & naming conventions

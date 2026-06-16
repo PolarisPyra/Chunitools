@@ -8,7 +8,7 @@ from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 
 from src.core.const import NoteType, RenderRole
 from src.notes.slide import Slide, SlideTo
-from src.ui.view.renderer.notes.support import RendererMixinSupport, SlidePathPoint
+from src.ui.components.timeline_view.notes.support import RendererMixinSupport, SlidePathPoint
 
 NOTE_DEBUG = logging.getLogger("note_rendering_debug")
 

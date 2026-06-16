@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from src.core.models import Chart
+    from src.ui.components.timeline_view.notes.support import SlidePathPoint
     from src.ui.view.projection import ViewProjection
-    from src.ui.view.renderer.notes.support import SlidePathPoint
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
@@ -31,16 +31,16 @@ from src.core.const import (
 )
 from src.notes.air import AirSlideStart
 from src.notes.slide import Slide
-from src.ui.theme.color_profile import DEFAULT_COLOR_PROFILE, GradientColor
-from src.ui.theme.ui import TEXT_MEASURE, qt as theme_qt
-from src.ui.view import timeline_compat
-from src.ui.view.renderer.notes import (
+from src.ui.components.timeline_view.notes import (
     AirRendererMixin,
     DamageRendererMixin,
     FlickRendererMixin,
     HoldRendererMixin,
     SlideRendererMixin,
 )
+from src.ui.theme.color_profile import DEFAULT_COLOR_PROFILE, GradientColor
+from src.ui.theme.ui import TEXT_MEASURE, qt as theme_qt
+from src.ui.view import timeline_compat
 
 # Set up logging
 logger = logging.getLogger("chart_renderer")

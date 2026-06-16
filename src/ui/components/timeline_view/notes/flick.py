@@ -7,7 +7,7 @@ from PySide6.QtCore import QRectF
 if TYPE_CHECKING:
     from PySide6.QtGui import QPainter
 
-from src.ui.view.renderer.notes.support import RendererMixinSupport
+from src.ui.components.timeline_view.notes.support import RendererMixinSupport
 
 
 class FlickRendererMixin(RendererMixinSupport):
