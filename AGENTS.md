@@ -1,4 +1,4 @@
-## Project: chunitools v0.2.12
+## Project: chunitools v0.2.13
 
 A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and editor built with Python 3.10+ and PySide6 (Qt6).
 
@@ -195,7 +195,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 
 ### Versioning
 
-- **Always use SemVer** (semver.org). Current: 0.2.12. For 0.x, bump MINOR for breaking internal API changes, PATCH for bugfixes/refactors that don't change public interfaces. Tag every release with `v<VERSION>` (e.g., `v0.2.12`) and push tags to origin. Commit version bumps separately as `v<VERSION>`.
+- **Always use SemVer** (semver.org). Current: 0.2.13. For 0.x, bump MINOR for breaking internal API changes, PATCH for bugfixes/refactors that don't change public interfaces. Tag every release with `v<VERSION>` (e.g., `v0.2.13`) and push tags to origin. Commit version bumps separately as `v<VERSION>`.
 
 ## Rules
 
@@ -210,6 +210,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 ### Architecture & naming conventions
 
 - **No backward compatibility.** This project is in active development. When code is renamed or restructured, old names are removed completely — no aliases, no deprecation shims, no `# legacy` comments. The codebase is cleaned up as if the old names never existed.
+- **No fallback inference.** Do not silently guess note anchors, note types, paths, or renderer geometry from nearby notes, matching cells, filenames, or target strings. Use explicit parsed data and object links only; if data is missing or ambiguous, leave it unresolved and surface the issue.
 - **No `**kwargs` or `**dict` splatting** in constructor/factory calls. Every keyword argument is explicitly named at every call site.
 - **Note type groupings must match game-engine categories.** The game's internal classification is:
   - `GROUND` = TAP, MNE

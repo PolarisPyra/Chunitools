@@ -354,5 +354,5 @@ def load_settings() -> UserSettings:
 
 
 APP_NAME = "Chunitools"
-VERSION = "0.2.12"
+VERSION = "0.2.13"
 settings = load_settings()
