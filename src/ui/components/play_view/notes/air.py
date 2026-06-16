@@ -7,21 +7,13 @@ from dataclasses import replace
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 
-from src.core.const import NoteType, RenderRole
-from src.notes import AirSlideStart, Note, Slide, SlideTo
-from src.ui.components.util.play_view_geometry import (
-    ACTIVE_DEPTH_MAX,
-    ACTIVE_DEPTH_MIN,
+from src.core.const import NoteType
+from src.notes import AirSlideStart, Note
+from src.ui.components.play_view.geometry import (
     AIR_ARROW_ANCHOR_OFFSET,
     AIR_ARROW_HEIGHT_SCALE,
     AIR_ARROW_WIDTH_SCALE,
     DRAW_DEPTH_MAX,
-    DRAW_DEPTH_MIN,
-    FIELD_HALF,
-    LANE_WIDTH,
-    NOTE_WIDTH_FRAC,
-    RENDER_BIG_NOTE_DEPTH,
-    RENDER_NOTE_DEPTH,
     _air_arrow_screen_span,
     _air_path_screen_span,
     _air_path_width_factor,
@@ -30,19 +22,16 @@ from src.ui.components.util.play_view_geometry import (
     _air_trace_world_y_from_g0,
     _chart_air_height_to_g0,
     _clip_air_path_segment,
-    _clip_sustain_segment,
     _compact_depth_to_z,
     _depth_in_draw_range,
-    _has_sustain,
     _lerp,
-    _note_screen_span,
     _project_point,
     _projected_polygon_is_bounded,
     _projection_for_depth,
     _scaled_span_width,
     _sustain_draw_depths,
 )
-from src.ui.theme.notes import TRACE_COLORS, get_note_color
+from src.ui.theme.notes import get_note_color
 
 AIR_WRAPPED_GROUND_TYPES = {
     NoteType.TAP,
@@ -59,7 +48,7 @@ AIR_WRAPPED_GROUND_TYPES = {
 AIR_WRAPPED_EX_HEAD_TYPES = {NoteType.CHR, NoteType.HXD, NoteType.SXD, NoteType.SXC}
 
 
-class PlayViewNotesMixin:
+class PlayViewAirNotesMixin:
     def _air_path_screen_y(self, note: Note, depth: float, *, end: bool = False) -> float | None:
         world_y = _air_path_world_y(note, end=end)
         if world_y is None:
@@ -72,7 +61,6 @@ class PlayViewNotesMixin:
             self.height(),
         )
         return screen_y
-
     def _air_path_screen_span_at(
         self,
         cell: float,
@@ -94,7 +82,6 @@ class PlayViewNotesMixin:
             )
         screen_x, screen_w = _air_path_screen_span(cell, width, vanish_x, scale)
         return screen_x, screen_y, screen_w, scale
-
     def _air_trace_screen_span_at(
         self,
         cell: float,
@@ -112,7 +99,6 @@ class PlayViewNotesMixin:
             screen_x, screen_w, _air_trace_width_factor_from_world_y(world_y)
         )
         return trace_x, screen_y, trace_w, scale
-
     def _air_arrow_screen_span_at_anchor(
         self,
         note: Note,
@@ -140,7 +126,6 @@ class PlayViewNotesMixin:
                 cell, width = span
 
         return _air_arrow_screen_span(cell, width, vanish_x, scale)
-
     def _air_anchor_for_note(self, note: Note) -> tuple[Note, bool] | None:
         timeline = self.chart.timeline if self.chart else None
         anchor = timeline.note_anchor(note) if timeline else getattr(note, "parent", None)
@@ -155,17 +140,14 @@ class PlayViewNotesMixin:
             end = tick == anchor_end and anchor_end != anchor_start
 
         return anchor, end
-
     def _air_anchor_draws_separately(self, note: Note) -> bool:
         anchor_info = self._air_anchor_for_note(note)
         if anchor_info is None:
             return False
         anchor, _end = anchor_info
         return anchor in self._notes and self.visible_note_types.get(anchor.note_type.value, True)
-
     def _air_wrapped_start_world_y(self, note: Note) -> float | None:
         return _air_path_world_y(note)
-
     def _air_anchor_world_y(self, note: Note) -> float | None:
         anchor_info = self._air_anchor_for_note(note)
         if anchor_info is None:
@@ -177,7 +159,6 @@ class PlayViewNotesMixin:
         if anchor_world_y is None:
             return 0.0
         return anchor_world_y
-
     def _air_anchor_screen_y(
         self,
         note: Note,
@@ -205,7 +186,6 @@ class PlayViewNotesMixin:
             self.height(),
         )
         return screen_y
-
     def _draw_air_lift_if_needed(
         self,
         painter: QPainter,
@@ -237,829 +217,6 @@ class PlayViewNotesMixin:
         self._draw_air_lift_connector(
             painter, x, y_bottom, y_top_overlapped, w, scale, color, alpha
         )
-
-    def _get_note_color(self, note: Note) -> QColor:
-        if note.note_type == NoteType.ALD:
-            color_code = getattr(note, "color", "DEF")
-            return QColor(TRACE_COLORS.get(color_code, "#b4b4c8"))
-
-        return get_note_color(note.note_type)
-
-    def _draw_notes(self, painter: QPainter, judge_time: float) -> None:  # noqa: PLR0912
-        w, h = self.width(), self.height()
-        vanish_x = w / 2.0
-        vanish_y = h * 0.10
-        judge_y = h * 0.90
-
-        if not self.chart:
-            return
-        visible_notes = []
-        tl = self.chart.timeline
-        for note in self._notes:
-            if not self.visible_note_types.get(note.note_type.value, True):
-                continue
-            note_time = self._note_times.get(id(note), 0.0)
-            end_time = self._note_end_times.get(id(note), note_time)
-            depth = self._compute_note_depth(note, tl.note_tick(note), note_time, judge_time)
-            end_depth = self._compute_note_depth(note, tl.note_end_tick(note), end_time, judge_time)
-
-            if _has_sustain(note):
-                if _sustain_draw_depths(depth, end_depth) is None:
-                    continue
-            else:
-                if depth > ACTIVE_DEPTH_MAX:
-                    continue
-                if depth < ACTIVE_DEPTH_MIN:
-                    continue
-
-            visible_notes.append((note, depth, end_depth))
-
-        visible_notes.sort(key=lambda x: x[1], reverse=True)
-
-        self._deferred_air_arrows.clear()
-        self._defer_air_arrows = True
-        try:
-            for note, depth, end_depth in visible_notes:
-                if _has_sustain(note):
-                    if _sustain_draw_depths(depth, end_depth) is None:
-                        continue
-                else:
-                    if depth >= DRAW_DEPTH_MAX:
-                        continue
-                    if depth <= DRAW_DEPTH_MIN:
-                        continue
-
-                scale, screen_y, t = self._world_z_to_screen(depth, vanish_y, judge_y)
-                lane_x, note_w = _note_screen_span(note.cell, note.width, vanish_x, scale)
-                if note_w < 2:
-                    continue
-
-                alpha = max(30, int(255 * (1.0 - abs(t) * 0.5)))
-
-                self._draw_note(
-                    painter,
-                    note,
-                    lane_x,
-                    screen_y,
-                    note_w,
-                    scale,
-                    alpha,
-                    judge_time,
-                    depth,
-                    end_depth,
-                    vanish_x,
-                    vanish_y,
-                    judge_y,
-                )
-        finally:
-            self._defer_air_arrows = False
-
-        for payload in self._deferred_air_arrows:
-            self._draw_air_arrow_for_note(painter, *payload)
-        self._deferred_air_arrows.clear()
-
-    def _draw_note(  # noqa: PLR0912
-        self,
-        painter: QPainter,
-        note: Note,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        alpha: int,
-        judge_time: float,
-        depth: float,
-        end_depth: float,
-        vanish_x: float,
-        vanish_y: float,
-        judge_y: float,
-    ) -> None:
-        nt = note.note_type
-        color = self._get_note_color(note)
-        color.setAlpha(alpha)
-
-        has_duration = hasattr(note, "duration") and getattr(note, "duration", 0) > 0
-        is_air_arrow = nt in {
-            NoteType.AIR,
-            NoteType.AUR,
-            NoteType.AUL,
-            NoteType.ADW,
-            NoteType.ADR,
-            NoteType.ADL,
-        }
-
-        air_y = self._air_path_screen_y(note, depth)
-        if air_y is not None:
-            y = air_y
-
-        if is_air_arrow:
-            x, w = self._air_arrow_screen_span_at_anchor(note, vanish_x, scale)
-        elif nt in {
-            NoteType.AHD,
-            NoteType.AHX,
-            NoteType.ALD,
-            NoteType.ASD,
-            NoteType.ASC,
-        }:
-            x, w = _air_path_screen_span(note.cell, note.width, vanish_x, scale)
-
-        if nt == NoteType.TAP:
-            self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, depth)
-        elif nt == NoteType.CHR:
-            self._draw_extap_quad(painter, x, y, w, scale, color, alpha, note, depth)
-        elif nt == NoteType.FLK:
-            self._draw_flick(painter, x, y, w, scale, color, alpha, note, depth)
-        elif nt == NoteType.MNE:
-            self._draw_mine(painter, x, y, w, scale, color, alpha)
-        elif nt == NoteType.AHD:
-            self._draw_air_hold_segment(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                color,
-                alpha,
-                judge_time,
-                depth,
-                end_depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-                is_start=True,
-            )
-        elif nt == NoteType.AHX:
-            sustain_color = get_note_color(NoteType.AHD)
-            sustain_color.setAlpha(alpha)
-            self._draw_air_hold_segment(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                sustain_color,
-                alpha,
-                judge_time,
-                depth,
-                end_depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-                is_start=True,
-            )
-        elif nt in {NoteType.HLD, NoteType.HXD}:
-            if has_duration:
-                self._draw_hold(
-                    painter,
-                    note,
-                    x,
-                    y,
-                    w,
-                    scale,
-                    color,
-                    alpha,
-                    judge_time,
-                    depth,
-                    end_depth,
-                    vanish_x,
-                    vanish_y,
-                    judge_y,
-                )
-            else:
-                self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, depth)
-        elif nt in {NoteType.SLD, NoteType.SLC, NoteType.SXD, NoteType.SXC}:
-            self._draw_slide(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                color,
-                alpha,
-                judge_time,
-                depth,
-                end_depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
-        elif is_air_arrow:
-            self._draw_or_defer_air_arrow(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                alpha,
-                nt,
-                depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
-        elif nt in {NoteType.ASD, NoteType.ASC}:
-            self._draw_air_slide(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                color,
-                alpha,
-                judge_time,
-                depth,
-                end_depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
-        elif nt == NoteType.ALD:
-            self._draw_air_trace(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                color,
-                alpha,
-                judge_time,
-                depth,
-                end_depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
-        else:
-            self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, depth)
-
-    def _get_world_y(self, note: Note) -> float:
-        wy = _air_path_world_y(note)
-        return wy if wy is not None else 0.0
-
-    def _project_flat_note_corners(
-        self, note: Note, cell: float, width: float, depth: float
-    ) -> list[QPointF]:
-        is_big = note.note_type in {NoteType.HLD, NoteType.HXD, NoteType.SLD, NoteType.SXD}
-        return self._project_flat_note_corners_at_world_y(
-            cell,
-            width,
-            depth,
-            self._get_world_y(note),
-            is_big=is_big,
-        )
-
-    def _project_flat_note_corners_at_world_y(
-        self,
-        cell: float,
-        width: float,
-        depth: float,
-        world_y: float,
-        *,
-        is_big: bool = False,
-    ) -> list[QPointF]:
-        w, h = self.width(), self.height()
-        w_x0 = cell * LANE_WIDTH - FIELD_HALF
-        w_x1 = (cell + width) * LANE_WIDTH - FIELD_HALF
-        z = _compact_depth_to_z(depth)
-        half_depth = (RENDER_BIG_NOTE_DEPTH if is_big else RENDER_NOTE_DEPTH) / 2.0
-        z_far = z - half_depth
-        z_near = z + half_depth
-        pt0 = _project_point(w_x0, world_y, z_far, w, h)
-        pt1 = _project_point(w_x1, world_y, z_far, w, h)
-        pt2 = _project_point(w_x1, world_y, z_near, w, h)
-        pt3 = _project_point(w_x0, world_y, z_near, w, h)
-        return [QPointF(*pt0), QPointF(*pt1), QPointF(*pt2), QPointF(*pt3)]
-
-    def _project_sustain_corners(
-        self,
-        note: Note,
-        start_cell: float,
-        start_width: float,
-        start_depth: float,
-        end_cell: float,
-        end_width: float,
-        end_depth: float,
-        *,
-        start_world_y: float | None = None,
-        end_world_y: float | None = None,
-        start_width_factor: float = NOTE_WIDTH_FRAC,
-        end_width_factor: float = NOTE_WIDTH_FRAC,
-    ) -> list[QPointF]:
-        viewport_w, viewport_h = self.width(), self.height()
-        start_y = self._get_world_y(note) if start_world_y is None else start_world_y
-        end_y = self._get_world_y(note) if end_world_y is None else end_world_y
-        start_center = (start_cell + start_width / 2.0) * LANE_WIDTH - FIELD_HALF
-        end_center = (end_cell + end_width / 2.0) * LANE_WIDTH - FIELD_HALF
-        start_visual_width = start_width * LANE_WIDTH * start_width_factor
-        end_visual_width = end_width * LANE_WIDTH * end_width_factor
-        start_x0 = start_center - start_visual_width / 2.0
-        start_x1 = start_center + start_visual_width / 2.0
-        end_x0 = end_center - end_visual_width / 2.0
-        end_x1 = end_center + end_visual_width / 2.0
-        start_z = _compact_depth_to_z(start_depth)
-        end_z = _compact_depth_to_z(end_depth)
-        return [
-            QPointF(*_project_point(start_x0, start_y, start_z, viewport_w, viewport_h)),
-            QPointF(*_project_point(start_x1, start_y, start_z, viewport_w, viewport_h)),
-            QPointF(*_project_point(end_x1, end_y, end_z, viewport_w, viewport_h)),
-            QPointF(*_project_point(end_x0, end_y, end_z, viewport_w, viewport_h)),
-        ]
-
-    def _draw_projected_sustain_body(
-        self,
-        painter: QPainter,
-        note: Note,
-        start_cell: float,
-        start_width: float,
-        start_depth: float,
-        end_cell: float,
-        end_width: float,
-        end_depth: float,
-        color: QColor,
-        alpha: int,
-        *,
-        start_world_y: float | None = None,
-        end_world_y: float | None = None,
-        start_width_factor: float = NOTE_WIDTH_FRAC,
-        end_width_factor: float = NOTE_WIDTH_FRAC,
-    ) -> None:
-        if painter is None:
-            return
-        corners = self._project_sustain_corners(
-            note,
-            start_cell,
-            start_width,
-            start_depth,
-            end_cell,
-            end_width,
-            end_depth,
-            start_world_y=start_world_y,
-            end_world_y=end_world_y,
-            start_width_factor=start_width_factor,
-            end_width_factor=end_width_factor,
-        )
-        if not _projected_polygon_is_bounded(corners, self.width(), self.height()):
-            return
-
-        body_color = QColor(color.red(), color.green(), color.blue(), alpha // 3)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(body_color)
-        painter.drawPolygon(QPolygonF(corners))
-
-        start_mid = (corners[0] + corners[1]) * 0.5
-        end_mid = (corners[2] + corners[3]) * 0.5
-        start_scale = _projection_for_depth(start_depth, self.width(), self.height())[0]
-        end_scale = _projection_for_depth(end_depth, self.width(), self.height())[0]
-        pen_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
-        painter.setPen(QPen(pen_color, max(1, int(min(start_scale, end_scale) * 2))))
-        painter.drawLine(start_mid, end_mid)
-
-    def _draw_flat_note_quad(
-        self,
-        painter: QPainter,
-        cell: float,
-        width: float,
-        depth: float,
-        color: QColor,
-        alpha: int,
-        note: Note,
-        is_extap: bool = False,
-    ) -> list[QPointF]:
-        corners = self._project_flat_note_corners(note, cell, width, depth)
-        if not all(math.isfinite(pt.x()) and math.isfinite(pt.y()) for pt in corners):
-            return corners
-        poly = QPolygonF(corners)
-        scale = _projection_for_depth(depth, self.width(), self.height())[0]
-
-        if is_extap:
-            gold = QColor(255, 215, 0, alpha)
-            painter.setPen(QPen(QColor(255, 240, 150, alpha), max(1, int(scale * 2))))
-            painter.setBrush(gold)
-            painter.drawPolygon(poly)
-
-            left_mid = (corners[0] + corners[3]) * 0.5
-            right_mid = (corners[1] + corners[2]) * 0.5
-            painter.setPen(QPen(QColor(255, 255, 200, alpha // 2), 1))
-            painter.drawLine(left_mid, right_mid)
-        else:
-            paint_alpha = QColor(color.red(), color.green(), color.blue(), alpha)
-            painter.setPen(QPen(color.darker(130), max(1, int(scale * 2))))
-            painter.setBrush(paint_alpha)
-            painter.drawPolygon(poly)
-
-            glow = QColor(color.red(), color.green(), color.blue(), alpha // 4)
-            painter.setPen(QPen(glow, max(2, int(scale * 3))))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawPolygon(poly)
-
-        return corners
-
-    def _draw_tap_quad(
-        self,
-        painter: QPainter,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        note: Note,
-        depth: float,
-        cell: float | None = None,
-        width: float | None = None,
-    ) -> None:
-        if not _depth_in_draw_range(depth):
-            return
-        c_val = cell if cell is not None else float(note.cell)
-        w_val = width if width is not None else float(note.width)
-        self._draw_flat_note_quad(painter, c_val, w_val, depth, color, alpha, note, is_extap=False)
-
-    def _draw_extap_quad(
-        self,
-        painter: QPainter,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        note: Note,
-        depth: float,
-        cell: float | None = None,
-        width: float | None = None,
-    ) -> None:
-        if not _depth_in_draw_range(depth):
-            return
-        c_val = cell if cell is not None else float(note.cell)
-        w_val = width if width is not None else float(note.width)
-        self._draw_flat_note_quad(painter, c_val, w_val, depth, color, alpha, note, is_extap=True)
-
-    def _draw_mine(
-        self,
-        painter: QPainter,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-    ) -> None:
-        r = max(2, int(w * 0.35))
-        cx, cy = int(x + w / 2), int(y)
-        painter.setPen(QPen(QColor(200, 60, 60, alpha), max(1, int(scale * 2))))
-        painter.setBrush(QColor(100, 20, 20, alpha))
-        painter.drawEllipse(cx - r, cy - r, r * 2, r * 2)
-        painter.setPen(QPen(QColor(255, 100, 100, alpha), max(1, int(scale * 1.5))))
-        painter.drawLine(cx - r // 2, cy - r // 2, cx + r // 2, cy + r // 2)
-        painter.drawLine(cx + r // 2, cy - r // 2, cx - r // 2, cy + r // 2)
-
-    def _draw_flick(
-        self,
-        painter: QPainter,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        note: Note,
-        depth: float,
-        cell: float | None = None,
-        width: float | None = None,
-    ) -> None:
-        if not _depth_in_draw_range(depth):
-            return
-        c_val = cell if cell is not None else float(note.cell)
-        w_val = width if width is not None else float(note.width)
-        corners = self._project_flat_note_corners(note, c_val, w_val, depth)
-        poly = QPolygonF(corners)
-
-        painter.setPen(QPen(color.lighter(130), max(1, int(scale * 2))))
-        painter.setBrush(QColor(color.red(), color.green(), color.blue(), alpha))
-        painter.drawPolygon(poly)
-
-        left_mid = (corners[0] + corners[3]) * 0.5
-        right_mid = (corners[1] + corners[2]) * 0.5
-        center = (left_mid + right_mid) * 0.5
-
-        painter.setPen(QPen(QColor(255, 255, 255, alpha), max(1, int(scale * 1.5))))
-        dx = 3 * scale
-        dy = 4 * scale
-        painter.drawLine(
-            QPointF(center.x() - dx, center.y() - dy),
-            QPointF(center.x() + dx, center.y()),
-        )
-        painter.drawLine(
-            QPointF(center.x() - dx, center.y() + dy),
-            QPointF(center.x() + dx, center.y()),
-        )
-
-    def _draw_hold(
-        self,
-        painter: QPainter,
-        note: Note,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        judge_time: float,
-        depth: float,
-        end_depth: float,
-        vanish_x: float,
-        vanish_y: float,
-        judge_y: float,
-    ) -> None:
-        draw_depths = _sustain_draw_depths(depth, end_depth)
-        if draw_depths is None:
-            return
-        draw_depth, draw_end_depth = draw_depths
-        if draw_depth != depth:
-            scale, y, _ = self._world_z_to_screen(draw_depth, vanish_y, judge_y)
-            x, w = _note_screen_span(note.cell, note.width, vanish_x, scale)
-
-        end_scale, end_y, _ = self._world_z_to_screen(draw_end_depth, vanish_y, judge_y)
-        end_x, end_w = _note_screen_span(note.cell, note.width, vanish_x, end_scale)
-
-        self._draw_projected_sustain_body(
-            painter,
-            note,
-            note.cell,
-            note.width,
-            draw_depth,
-            note.cell,
-            note.width,
-            draw_end_depth,
-            color,
-            alpha,
-        )
-
-        if _depth_in_draw_range(depth):
-            self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, draw_depth)
-        if _depth_in_draw_range(draw_end_depth):
-            end_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
-            self._draw_tap_quad(
-                painter, end_x, end_y, end_w, end_scale, end_color, alpha // 2, note, draw_end_depth
-            )
-
-    def _draw_slide(
-        self,
-        painter: QPainter,
-        note: Note,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        judge_time: float,
-        depth: float,
-        end_depth: float,
-        vanish_x: float,
-        vanish_y: float,
-        judge_y: float,
-    ) -> None:
-        if isinstance(note, Slide) and note.steps:
-            self._draw_slide_steps(
-                painter,
-                note,
-                x,
-                y,
-                w,
-                scale,
-                color,
-                alpha,
-                judge_time,
-                depth,
-                vanish_x,
-                vanish_y,
-                judge_y,
-            )
-        elif isinstance(note, SlideTo):
-            draw_depths = _sustain_draw_depths(depth, end_depth)
-            if draw_depths is None:
-                return
-            (
-                start_cell,
-                start_width,
-                draw_depth,
-                end_cell,
-                end_width,
-                draw_end_depth,
-            ) = _clip_sustain_segment(
-                note.cell,
-                note.width,
-                depth,
-                note.end_cell,
-                note.end_width,
-                end_depth,
-            )
-            if draw_depth != depth:
-                scale, y, _ = self._world_z_to_screen(draw_depth, vanish_y, judge_y)
-                x, w = _note_screen_span(start_cell, start_width, vanish_x, scale)
-
-            end_scale, end_y, _ = self._world_z_to_screen(draw_end_depth, vanish_y, judge_y)
-            end_x, end_w = _note_screen_span(end_cell, end_width, vanish_x, end_scale)
-
-            self._draw_projected_sustain_body(
-                painter,
-                note,
-                start_cell,
-                start_width,
-                draw_depth,
-                end_cell,
-                end_width,
-                draw_end_depth,
-                color,
-                alpha,
-            )
-
-            if _depth_in_draw_range(depth):
-                self._draw_tap_quad(
-                    painter,
-                    x,
-                    y,
-                    w,
-                    scale,
-                    color,
-                    alpha,
-                    note,
-                    draw_depth,
-                    cell=start_cell,
-                    width=start_width,
-                )
-            if _depth_in_draw_range(draw_end_depth):
-                end_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
-                self._draw_tap_quad(
-                    painter,
-                    end_x,
-                    end_y,
-                    end_w,
-                    end_scale,
-                    end_color,
-                    alpha // 2,
-                    note,
-                    draw_end_depth,
-                    cell=end_cell,
-                    width=end_width,
-                )
-
-    def _draw_slide_steps(
-        self,
-        painter: QPainter,
-        note: Slide,
-        x: float,
-        y: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-        judge_time: float,
-        depth: float,
-        vanish_x: float,
-        vanish_y: float,
-        judge_y: float,
-    ) -> None:
-        tl = self.chart.timeline if self.chart else None
-        if not tl or not note.steps:
-            return
-
-        if _depth_in_draw_range(depth) and self._should_draw_slide_head(note):
-            self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, depth)
-
-        prev_x, prev_y, prev_w, prev_scale = x, y, w, scale
-        prev_cell, prev_width = float(note.cell), float(note.width)
-        current_tick = tl.note_tick(note)
-        prev_depth = depth
-        last_depth = depth
-
-        step_count = len(note.steps)
-        for index, step in enumerate(note.steps):
-            current_tick += step.duration
-            step_time = tl.time_at(current_tick)
-            step_depth = self._compute_note_depth(
-                note,
-                current_tick,
-                step_time,
-                judge_time,
-                cell=float(step.end_cell),
-                width=float(step.end_width),
-            )
-            last_depth = step_depth
-
-            if min(prev_depth, step_depth) >= DRAW_DEPTH_MAX:
-                break
-
-            draw_depths = _sustain_draw_depths(prev_depth, step_depth)
-            if draw_depths is None:
-                step_scale, step_y, _ = self._world_z_to_screen(step_depth, vanish_y, judge_y)
-                step_x, step_w = _note_screen_span(
-                    step.end_cell, step.end_width, vanish_x, step_scale
-                )
-                prev_x, prev_y, prev_w, prev_scale = step_x, step_y, step_w, step_scale
-                prev_cell, prev_width = float(step.end_cell), float(step.end_width)
-                prev_depth = step_depth
-                continue
-
-            (
-                start_cell,
-                start_width,
-                draw_start_depth,
-                step_cell,
-                step_width,
-                draw_step_depth,
-            ) = _clip_sustain_segment(
-                prev_cell,
-                prev_width,
-                prev_depth,
-                float(step.end_cell),
-                float(step.end_width),
-                step_depth,
-            )
-            prev_scale, prev_y, _ = self._world_z_to_screen(draw_start_depth, vanish_y, judge_y)
-            prev_x, prev_w = _note_screen_span(start_cell, start_width, vanish_x, prev_scale)
-            step_scale, step_y, _ = self._world_z_to_screen(draw_step_depth, vanish_y, judge_y)
-            step_x, step_w = _note_screen_span(step_cell, step_width, vanish_x, step_scale)
-
-            self._draw_projected_sustain_body(
-                painter,
-                note,
-                start_cell,
-                start_width,
-                draw_start_depth,
-                step_cell,
-                step_width,
-                draw_step_depth,
-                color,
-                alpha,
-            )
-
-            step_color = QColor(color.red(), color.green(), color.blue(), alpha * 3 // 4)
-            if (
-                self._should_draw_slide_step_head(index, step_count, step)
-                and _depth_in_draw_range(step_depth)
-                and self.visible_note_types.get(step.note_type.value, True)
-            ):
-                self._draw_tap_quad(
-                    painter,
-                    step_x,
-                    step_y,
-                    step_w,
-                    step_scale,
-                    step_color,
-                    alpha,
-                    note,
-                    step_depth,
-                    cell=step.end_cell,
-                    width=step.end_width,
-                )
-
-            prev_x, prev_y, prev_w, prev_scale = step_x, step_y, step_w, step_scale
-            prev_cell, prev_width = float(step.end_cell), float(step.end_width)
-            prev_depth = step_depth
-
-        if _depth_in_draw_range(last_depth):
-            end_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
-            self._draw_tap_quad(
-                painter,
-                prev_x,
-                prev_y,
-                prev_w,
-                prev_scale,
-                end_color,
-                alpha // 2,
-                note,
-                prev_depth,
-                cell=prev_cell,
-                width=prev_width,
-            )
-
-    def _should_draw_slide_head(self, note: Note) -> bool:
-        timeline = self.chart.timeline if self.chart else None
-        if not timeline:
-            return True
-        if timeline.note_render_role(note) == RenderRole.HEAD:
-            return True
-        if note.note_type not in (NoteType.SXD, NoteType.SXC):
-            return False
-        predecessor = timeline.note_chain_predecessor(note)
-        return predecessor is not None and predecessor.note_type not in (
-            NoteType.SXD,
-            NoteType.SXC,
-        )
-
-    def _should_draw_slide_step_head(self, index: int, step_count: int, step: SlideTo) -> bool:
-        if index == step_count - 1:
-            return False
-        return step.note_type in {NoteType.SLD, NoteType.SXD}
-
     def _draw_air_lift_connector(
         self,
         painter: QPainter,
@@ -1102,7 +259,6 @@ class PlayViewNotesMixin:
         painter.setPen(QPen(center_color, max(2, int(scale * 4))))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawLine(QPointF(center_x, y_bottom), QPointF(center_x, y_top))
-
     def _draw_air_arrow(
         self,
         painter: QPainter,
@@ -1151,7 +307,6 @@ class PlayViewNotesMixin:
         painter.drawPolygon(polygon)
 
         painter.restore()
-
     def _draw_or_defer_air_arrow(
         self,
         painter: QPainter,
@@ -1178,7 +333,6 @@ class PlayViewNotesMixin:
         self._draw_air_arrow_for_note(
             painter, note, x, y, w, scale, alpha, nt, depth, vanish_x, vanish_y, judge_y
         )
-
     def _draw_air_arrow_for_note(
         self,
         painter: QPainter,
@@ -1206,7 +360,6 @@ class PlayViewNotesMixin:
         arrow_color = get_note_color(nt)
         arrow_color.setAlpha(alpha)
         self._draw_air_arrow(painter, x, y, w, scale, arrow_color, alpha, nt)
-
     def _draw_air_start_arrow_if_needed(
         self,
         painter: QPainter,
@@ -1281,7 +434,6 @@ class PlayViewNotesMixin:
             vanish_y,
             judge_y,
         )
-
     def _draw_air_action_bar_3d(
         self,
         painter: QPainter,
@@ -1311,7 +463,6 @@ class PlayViewNotesMixin:
         painter.drawLine(corners[0], corners[1])
         painter.setPen(QPen(shadow, edge))
         painter.drawLine(corners[3], corners[2])
-
     def _draw_air_hold_segment(
         self,
         painter: QPainter,
@@ -1414,7 +565,6 @@ class PlayViewNotesMixin:
                 alpha,
                 end_depth,
             )
-
     def _draw_air_slide(
         self,
         painter: QPainter,
@@ -1546,7 +696,6 @@ class PlayViewNotesMixin:
                     alpha,
                     end_depth,
                 )
-
     def _draw_air_slide_steps(
         self,
         painter: QPainter,
@@ -1734,7 +883,6 @@ class PlayViewNotesMixin:
             prev_width = float(step.end_width)
             prev_world_y = step_world_y
             prev_depth = step_depth
-
     def _air_slide_step_draws_bar(
         self,
         index: int,
@@ -1742,7 +890,6 @@ class PlayViewNotesMixin:
         step: Note,
     ) -> bool:
         return step.note_type == NoteType.ASD or index == step_count - 1
-
     def _draw_air_wrapped_ground_head(
         self,
         painter: QPainter,
@@ -1772,7 +919,6 @@ class PlayViewNotesMixin:
             self._draw_mine(painter, x, y, w, scale, color, alpha)
         else:
             self._draw_tap_quad(painter, x, y, w, scale, color, alpha, proxy, depth, cell, width)
-
     def _air_wrapped_ground_type(self, note: Note) -> NoteType | None:
         wrapped = getattr(note, "target_note", None)
         if not isinstance(wrapped, str):
@@ -1784,7 +930,6 @@ class PlayViewNotesMixin:
         if wrapped_type in AIR_WRAPPED_GROUND_TYPES:
             return wrapped_type
         return None
-
     def _draw_air_trace(
         self,
         painter: QPainter,
@@ -1924,3 +1069,4 @@ class PlayViewNotesMixin:
                     alpha,
                     curr_depth,
                 )
+
