@@ -182,8 +182,13 @@ class AirHold(Note):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class CrashSlide(Note):
-    """Air trace (ALD) — crushed/trail elements between air points."""
+class AirSlidePattern(Note):
+    """Air slide pattern/effect carrier (ALD).
+
+    ALD color controls the concrete visual role:
+    DEF = regular air slide pattern, NON = AIR-ACTION, GRY = wind/effect,
+    YEL = fake ExTap AIR-ACTION, BLK = hidden/invisible effect.
+    """
 
     # Game format: "ALD\t%d\t%d\t%d\t%d\t%d\t%3.1f\t%d\t%d\t%d\t%3.1f\t%s\n"
     #              MS   OFF  CEL  WID  TICK HGT   DUR  ECL  EWD  EHGT  CLR

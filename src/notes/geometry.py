@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.core.const import AIR_ARROW_NOTES, AIR_NOTE_TYPES
-from src.notes.air import Air, AirHold, AirHoldStart, AirSlide, AirSlideStart, CrashSlide
+from src.notes.air import Air, AirHold, AirHoldStart, AirSlide, AirSlidePattern, AirSlideStart
 from src.notes.hold import Hold
 from src.notes.slide import Slide, SlideTo
 
@@ -22,7 +22,7 @@ _LONG_NOTE_CLASSES = (
     Slide,
     AirHoldStart,
     AirHold,
-    CrashSlide,
+    AirSlidePattern,
     AirSlideStart,
     AirSlide,
     SlideTo,
@@ -31,7 +31,7 @@ _LONG_NOTE_CLASSES = (
 _MOVING_NOTE_CLASSES = (
     Slide,
     SlideTo,
-    CrashSlide,
+    AirSlidePattern,
     AirSlideStart,
     AirSlide,
     AirHold,

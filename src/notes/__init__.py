@@ -16,8 +16,8 @@ from src.notes.air import (
     AirHold,
     AirHoldStart,
     AirSlide,
+    AirSlidePattern,
     AirSlideStart,
-    CrashSlide,
 )
 from src.notes.base import (
     DEFAULT_NOTE_DURATION,
@@ -39,7 +39,7 @@ _NOTE_CLASSES: dict[str, type[Note]] = {
     "SLD": SlideTo, "SXD": SlideTo, "SLC": SlideTo, "SXC": SlideTo,
     "AIR": Air, "AUR": Air, "AUL": Air, "ADW": Air, "ADR": Air, "ADL": Air,
     "AHD": AirHoldStart, "AHX": AirHold,
-    "ALD": CrashSlide,
+    "ALD": AirSlidePattern,
     "ASD": AirSlide, "ASC": AirSlide,
 }
 
@@ -50,7 +50,7 @@ _BUILDABLE: dict[str, type[Note]] = {
     "SLD": Slide, "SXD": Slide, "SLC": Slide, "SXC": Slide,
     "AIR": Air, "AUR": Air, "AUL": Air, "ADW": Air, "ADR": Air, "ADL": Air,
     "AHD": AirHoldStart, "AHX": AirHold,
-    "ALD": CrashSlide,
+    "ALD": AirSlidePattern,
     "ASD": AirSlideStart, "ASC": AirSlideStart,
 }
 
@@ -74,7 +74,7 @@ class NoteCategory(str, Enum):
     AIR_ARROW = "air_arrow"
     AIR_HOLD = "air_hold"
     AIR_SLIDE = "air_slide"
-    AIR_CRUSH = "air_crush"
+    AIR_SLIDE_PATTERN = "air_slide_pattern"
 
 
 _NOTE_CATEGORIES: dict[str, NoteCategory] = {
@@ -96,7 +96,7 @@ _NOTE_CATEGORIES: dict[str, NoteCategory] = {
     "ADL": NoteCategory.AIR_ARROW,
     "AHD": NoteCategory.AIR_HOLD,
     "AHX": NoteCategory.AIR_HOLD,
-    "ALD": NoteCategory.AIR_CRUSH,
+    "ALD": NoteCategory.AIR_SLIDE_PATTERN,
     "ASD": NoteCategory.AIR_SLIDE,
     "ASC": NoteCategory.AIR_SLIDE,
 }
@@ -118,7 +118,7 @@ SLIDE_NOTE_TYPES = _notes(NoteCategory.SLIDE)
 AIR_ARROW_NOTE_TYPES = _notes(NoteCategory.AIR_ARROW)
 AIR_HOLD_NOTE_TYPES = _notes(NoteCategory.AIR_HOLD)
 AIR_SLIDE_NOTE_TYPES = _notes(NoteCategory.AIR_SLIDE)
-AIR_CRUSH_NOTE_TYPES = _notes(NoteCategory.AIR_CRUSH)
+AIR_SLIDE_PATTERN_NOTE_TYPES = _notes(NoteCategory.AIR_SLIDE_PATTERN)
 
 
 # ── Public API ──────────────────────────────────────────────────────────────
@@ -178,14 +178,14 @@ __all__ = [
     # Note classes
     "Note", "Tap", "ExTap", "Mine", "Hold", "Slide", "SlideTo",
     "Flick",
-    "Air", "AirHoldStart", "AirHold", "CrashSlide", "AirSlideStart", "AirSlide",
+    "Air", "AirHoldStart", "AirHold", "AirSlidePattern", "AirSlideStart", "AirSlide",
     # Construction
     "parse_note", "build_editor_note", "clamp_note_geometry", "parse_note_head",
     # Categories
     "GROUND_NOTE_TYPES", "EXTAP_NOTE_TYPES", "FLICK_NOTE_TYPES",
     "HOLD_NOTE_TYPES", "SLIDE_NOTE_TYPES",
     "AIR_ARROW_NOTE_TYPES", "AIR_HOLD_NOTE_TYPES", "AIR_SLIDE_NOTE_TYPES",
-    "AIR_CRUSH_NOTE_TYPES",
+    "AIR_SLIDE_PATTERN_NOTE_TYPES",
     # Internal
     "PARSER_NOTE_TYPES", "PARSER_NOTE_TYPE_VALUES",
     "EDITOR_NOTE_TYPES", "SCHEMA_NOTE_TYPES",

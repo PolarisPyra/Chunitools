@@ -5,7 +5,7 @@ import math
 from dataclasses import replace
 
 from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
 
 from src.core.const import NoteType
 from src.notes import AirSlideStart, Note
@@ -18,8 +18,8 @@ from src.ui.components.play_view.geometry import (
     _air_path_screen_span,
     _air_path_width_factor,
     _air_path_world_y,
-    _air_trace_width_factor_from_world_y,
-    _air_trace_world_y_from_g0,
+    _air_slide_pattern_width_factor_from_world_y,
+    _air_slide_pattern_world_y_from_g0,
     _chart_air_height_to_g0,
     _clip_air_path_segment,
     _compact_depth_to_z,
@@ -54,7 +54,9 @@ AIR_ANCHOR_FLOOR_TYPES = {
     NoteType.SXD,
     NoteType.SXC,
 }
-AIR_LIFT_STEM_WIDTH_FACTOR = 0.42
+AIR_ANCHOR_PULSE_HZ = 7.5
+AIR_ANCHOR_PULSE_HEIGHT_MIN = 1.0
+AIR_ANCHOR_PULSE_HEIGHT_MAX = 1.2
 
 
 class PlayViewAirNotesMixin:
@@ -91,7 +93,7 @@ class PlayViewAirNotesMixin:
             )
         screen_x, screen_w = _air_path_screen_span(cell, width, vanish_x, scale)
         return screen_x, screen_y, screen_w, scale
-    def _air_trace_screen_span_at(
+    def _air_slide_pattern_screen_span_at(
         self,
         cell: float,
         width: float,
@@ -105,7 +107,7 @@ class PlayViewAirNotesMixin:
             cell, width, depth, world_y, vanish_x, vanish_y, judge_y
         )
         trace_x, trace_w = _scaled_span_width(
-            screen_x, screen_w, _air_trace_width_factor_from_world_y(world_y)
+            screen_x, screen_w, _air_slide_pattern_width_factor_from_world_y(world_y)
         )
         return trace_x, screen_y, trace_w, scale
     def _air_arrow_screen_span_at_anchor(
@@ -231,67 +233,22 @@ class PlayViewAirNotesMixin:
         color: QColor,
         alpha: int,
     ) -> None:
-        if not _depth_in_draw_range(depth) or path_world_y is None:
-            return
+        return
+    def _air_arrow_anchor_pulse_for_note(self, note: Note) -> float:
+        if self._air_anchor_for_note(note) is None:
+            return 0.0
+        path_world_y = _air_path_world_y(note)
         anchor_world_y = self._air_anchor_world_y(note)
-        if anchor_world_y is None or abs(anchor_world_y - path_world_y) < 1.0:
-            return
+        if path_world_y is None or anchor_world_y is None:
+            return 0.0
+        if abs(path_world_y - anchor_world_y) < 1.0:
+            return 0.0
 
-        x, y_top, w, scale = self._air_path_screen_span_at(
-            cell, width, depth, path_world_y, vanish_x, vanish_y, judge_y
-        )
-        stem_w = max(3.0, w * AIR_LIFT_STEM_WIDTH_FACTOR)
-        stem_x = x + (w - stem_w) / 2.0
-        _, y_bottom, _, _ = self._air_path_screen_span_at(
-            cell, width, depth, anchor_world_y, vanish_x, vanish_y, judge_y
-        )
-        overlap = max(3.0, scale * 6.0)
-        y_top_overlapped = y_top - overlap if y_bottom > y_top else y_top + overlap
-        self._draw_air_lift_connector(
-            painter, stem_x, y_bottom, y_top_overlapped, stem_w, scale, color, alpha
-        )
-    def _draw_air_lift_connector(
-        self,
-        painter: QPainter,
-        x: float,
-        y_bottom: float,
-        y_top: float,
-        w: float,
-        scale: float,
-        color: QColor,
-        alpha: int,
-    ) -> None:
-        if painter is None:
-            return
-        if not all(math.isfinite(value) for value in (x, y_bottom, y_top, w, scale)):
-            return
-        if w <= 0.0 or abs(y_bottom - y_top) < 1.0:
-            return
-        top = min(y_bottom, y_top)
-        bottom = max(y_bottom, y_top)
-        body_points = [
-            QPointF(x, bottom),
-            QPointF(x + w, bottom),
-            QPointF(x + w, top),
-            QPointF(x, top),
-        ]
-        if not _projected_polygon_is_bounded(body_points, self.width(), self.height()):
-            return
-
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), alpha // 3)))
-        painter.drawPolygon(QPolygonF(body_points))
-
-        center_x = x + w / 2.0
-        edge_color = QColor(color.red(), color.green(), color.blue(), max(40, alpha // 2))
-        painter.setPen(QPen(edge_color, max(1, int(scale * 2))))
-        painter.drawLine(QPointF(x, bottom), QPointF(x, top))
-        painter.drawLine(QPointF(x + w, bottom), QPointF(x + w, top))
-
-        center_color = QColor(color.red(), color.green(), color.blue(), alpha)
-        painter.setPen(QPen(center_color, max(2, int(scale * 4))))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawLine(QPointF(center_x, y_bottom), QPointF(center_x, y_top))
+        elapsed_s = self._frame_timer.elapsed() / 1000.0
+        phase = (elapsed_s * AIR_ANCHOR_PULSE_HZ) % 1.0
+        return 1.0 - abs(phase * 2.0 - 1.0)
+    def _air_arrow_height_factor_for_pulse(self, pulse: float) -> float:
+        return _lerp(AIR_ANCHOR_PULSE_HEIGHT_MIN, AIR_ANCHOR_PULSE_HEIGHT_MAX, pulse)
     def _draw_air_arrow(
         self,
         painter: QPainter,
@@ -302,9 +259,11 @@ class PlayViewAirNotesMixin:
         color: QColor,
         alpha: int,
         nt: NoteType,
+        height_factor: float = 1.0,
+        stem_top_y: float | None = None,
     ) -> None:
         sw = w * AIR_ARROW_WIDTH_SCALE
-        sh = max(6.0, AIR_ARROW_HEIGHT_SCALE * scale)
+        sh = max(6.0, AIR_ARROW_HEIGHT_SCALE * scale * height_factor)
         is_down = nt in {NoteType.ADW, NoteType.ADR, NoteType.ADL}
 
         painter.save()
@@ -332,6 +291,31 @@ class PlayViewAirNotesMixin:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), alpha)))
         painter.drawPolygon(polygon)
+
+        streak_path = QPainterPath()
+        streak_path.addPolygon(polygon)
+        painter.save()
+        painter.setClipPath(streak_path)
+        streak_alpha = max(45, alpha // 2)
+        painter.setPen(QPen(QColor(255, 255, 255, streak_alpha), max(1.0, scale)))
+        streak_count = max(6, int(sw / max(scale * 4.0, 1.0)))
+        for index in range(1, streak_count):
+            stripe_x = -sw / 2.0 + sw * index / streak_count
+            painter.drawLine(QPointF(stripe_x, 0.0), QPointF(stripe_x, -sh * 0.62))
+        painter.restore()
+
+        if height_factor > 1.0:
+            stem_color = QColor(color.red(), color.green(), color.blue(), max(90, alpha * 2 // 3))
+            glow_color = QColor(color.red(), color.green(), color.blue(), max(30, alpha // 4))
+            stem_top = -sh * 1.12
+            if stem_top_y is not None:
+                local_stem_top = stem_top_y - (y - AIR_ARROW_ANCHOR_OFFSET * scale)
+                if math.isfinite(local_stem_top):
+                    stem_top = min(stem_top, local_stem_top)
+            painter.setPen(QPen(glow_color, max(3.0, scale * 5.0)))
+            painter.drawLine(QPointF(0.0, 0.0), QPointF(0.0, stem_top))
+            painter.setPen(QPen(stem_color, max(2.0, scale * 2.0)))
+            painter.drawLine(QPointF(0.0, 0.0), QPointF(0.0, stem_top))
 
         border_width = max(1.5, sh * 0.12)
         border_color = QColor(220, 220, 220, alpha)
@@ -381,16 +365,36 @@ class PlayViewAirNotesMixin:
         vanish_y: float,
         judge_y: float,
     ) -> None:
+        arrow_color = get_note_color(nt)
+        arrow_color.setAlpha(alpha)
+
         anchor_info = self._air_anchor_for_note(note)
+        height_factor = 1.0
+        stem_top_y = None
+        pulse = 0.0
         if anchor_info is not None or note.note_type == NoteType.AHX:
             # Anchor gives us the correct lane span (X, W). Only override Y when
             # the anchor itself is at air height (not ground-level).
             anchored_y = self._air_anchor_screen_y(note, depth, vanish_y, judge_y)
             x, w = self._air_arrow_screen_span_at_anchor(note, vanish_x, scale)
-            # anchored_y is None when the anchor has no air height → keep elevated y
+            pulse = self._air_arrow_anchor_pulse_for_note(note)
+            height_factor = self._air_arrow_height_factor_for_pulse(pulse)
             if anchored_y is not None:
                 y = anchored_y
-            else:
+            path_world_y = _air_path_world_y(note)
+            if path_world_y is not None:
+                _, stem_top_y = _project_point(
+                    0.0,
+                    path_world_y,
+                    _compact_depth_to_z(depth),
+                    self.width(),
+                    self.height(),
+                )
+                if pulse > 0.0 and stem_top_y is not None:
+                    target_y = stem_top_y + AIR_ARROW_ANCHOR_OFFSET * scale
+                    y = _lerp(y, target_y, pulse)
+            # anchored_y is None when the anchor has no air height → keep elevated y
+            if anchored_y is None:
                 self._draw_air_ground_step_base_for_anchor(
                     painter,
                     note,
@@ -398,9 +402,18 @@ class PlayViewAirNotesMixin:
                     alpha,
                 )
 
-        arrow_color = get_note_color(nt)
-        arrow_color.setAlpha(alpha)
-        self._draw_air_arrow(painter, x, y, w, scale, arrow_color, alpha, nt)
+        self._draw_air_arrow(
+            painter,
+            x,
+            y,
+            w,
+            scale,
+            arrow_color,
+            alpha,
+            nt,
+            height_factor,
+            stem_top_y,
+        )
     def _draw_air_ground_step_base_for_anchor(
         self,
         painter: QPainter,
@@ -1075,7 +1088,7 @@ class PlayViewAirNotesMixin:
         if wrapped_type in AIR_WRAPPED_GROUND_TYPES:
             return wrapped_type
         return None
-    def _draw_air_trace(
+    def _draw_air_slide_pattern(
         self,
         painter: QPainter,
         note: Note,
@@ -1135,7 +1148,7 @@ class PlayViewAirNotesMixin:
             end_world_y,
             end_depth,
         )
-        x, y, w, scale = self._air_trace_screen_span_at(
+        x, y, w, scale = self._air_slide_pattern_screen_span_at(
             start_cell, start_width, draw_depth, start_world_y, vanish_x, vanish_y, judge_y
         )
         trace_color = QColor(color.red(), color.green(), color.blue(), max(20, alpha // 2))
@@ -1153,8 +1166,8 @@ class PlayViewAirNotesMixin:
             alpha,
             start_world_y=start_world_y,
             end_world_y=draw_end_world_y,
-            start_width_factor=_air_trace_width_factor_from_world_y(start_world_y),
-            end_width_factor=_air_trace_width_factor_from_world_y(draw_end_world_y),
+            start_width_factor=_air_slide_pattern_width_factor_from_world_y(start_world_y),
+            end_width_factor=_air_slide_pattern_width_factor_from_world_y(draw_end_world_y),
         )
         trace_corners = self._project_sustain_corners(
             note,
@@ -1166,8 +1179,8 @@ class PlayViewAirNotesMixin:
             draw_end_depth,
             start_world_y=start_world_y,
             end_world_y=draw_end_world_y,
-            start_width_factor=_air_trace_width_factor_from_world_y(start_world_y),
-            end_width_factor=_air_trace_width_factor_from_world_y(draw_end_world_y),
+            start_width_factor=_air_slide_pattern_width_factor_from_world_y(start_world_y),
+            end_width_factor=_air_slide_pattern_width_factor_from_world_y(draw_end_world_y),
         )
         if not _projected_polygon_is_bounded(trace_corners, self.width(), self.height()):
             return
@@ -1204,7 +1217,7 @@ class PlayViewAirNotesMixin:
                 start_height = float(getattr(note, "starting_height", 1.0))
                 target_height = float(getattr(note, "target_height", start_height))
                 curr_height = _lerp(start_height, target_height, progress)
-                curr_world_y = _air_trace_world_y_from_g0(_chart_air_height_to_g0(curr_height))
+                curr_world_y = _air_slide_pattern_world_y_from_g0(_chart_air_height_to_g0(curr_height))
 
                 self._draw_air_action_bar_3d(
                     painter,

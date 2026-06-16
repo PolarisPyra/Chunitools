@@ -81,8 +81,15 @@ class PlayView3D(PlayViewNotesMixin, PlayViewPlayfieldMixin, QWidget):
         self._note_abs_pos: dict[int, float] = {}
         self._soflan_projector: SoflanProjector | None = None
         self._defer_air_arrows: bool = False
+        self._defer_note_overlays: bool = False
         self._deferred_air_arrows: list[
             tuple[Note, float, float, float, float, int, NoteType, float, float, float, float]
+        ] = []
+        self._deferred_note_overlays: list[
+            tuple[Note, float, float, float, float, QColor, int, float, float, float]
+        ] = []
+        self._deferred_flick_overlays: list[
+            tuple[Note, float, float, float, float, QColor, int, float, float | None, float | None]
         ] = []
         self.visible_note_types: dict[str, bool] = {}
 

@@ -16,7 +16,7 @@ from src.ui.components.play_view.geometry import (
     LANE_LINE_NEAR_Z,
     LANE_WIDTH,
     RENDER_CHART_AIR_HEIGHT_STEPS,
-    _air_trace_world_y_from_g0,
+    _air_slide_pattern_world_y_from_g0,
     _format_time,
     _project_point,
     _projection_for_depth,
@@ -152,7 +152,7 @@ class PlayViewPlayfieldMixin:
         if self._has_air_judge_line_notes():
             self._draw_projected_judge_line(
                 painter,
-                _air_trace_world_y_from_g0(RENDER_CHART_AIR_HEIGHT_STEPS),
+                _air_slide_pattern_world_y_from_g0(RENDER_CHART_AIR_HEIGHT_STEPS),
                 QColor(64, 255, 96, 230),
             )
 

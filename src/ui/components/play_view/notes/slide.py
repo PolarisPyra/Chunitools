@@ -88,15 +88,15 @@ class PlayViewSlideNotesMixin:
             )
 
             if _depth_in_draw_range(depth):
-                self._draw_tap_quad(
+                self._draw_or_defer_note_overlay(
                     painter,
+                    note,
                     x,
                     y,
                     w,
                     scale,
                     color,
                     alpha,
-                    note,
                     draw_depth,
                     cell=start_cell,
                     width=start_width,
@@ -107,15 +107,15 @@ class PlayViewSlideNotesMixin:
                 and not self._air_replaces_endpoint(note, end_tick, end_cell, end_width)
             ):
                 end_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
-                self._draw_tap_quad(
+                self._draw_or_defer_note_overlay(
                     painter,
+                    note,
                     end_x,
                     end_y,
                     end_w,
                     end_scale,
                     end_color,
                     alpha // 2,
-                    note,
                     draw_end_depth,
                     cell=end_cell,
                     width=end_width,
@@ -141,7 +141,19 @@ class PlayViewSlideNotesMixin:
             return
 
         if _depth_in_draw_range(depth) and self._should_draw_slide_head(note):
-            self._draw_tap_quad(painter, x, y, w, scale, color, alpha, note, depth)
+            self._draw_or_defer_note_overlay(
+                painter,
+                note,
+                x,
+                y,
+                w,
+                scale,
+                color,
+                alpha,
+                depth,
+                cell=float(note.cell),
+                width=float(note.width),
+            )
 
         prev_x, prev_y, prev_w, prev_scale = x, y, w, scale
         prev_cell, prev_width = float(note.cell), float(note.width)
@@ -217,15 +229,15 @@ class PlayViewSlideNotesMixin:
                 and self.visible_note_types.get(step.note_type.value, True)
                 and not self._air_replaces_endpoint(note, current_tick, step.end_cell, step.end_width)
             ):
-                self._draw_tap_quad(
+                self._draw_or_defer_note_overlay(
                     painter,
+                    note,
                     step_x,
                     step_y,
                     step_w,
                     step_scale,
                     step_color,
                     alpha,
-                    note,
                     step_depth,
                     cell=step.end_cell,
                     width=step.end_width,
@@ -242,15 +254,15 @@ class PlayViewSlideNotesMixin:
             prev_width,
         ):
             end_color = QColor(color.red(), color.green(), color.blue(), alpha // 2)
-            self._draw_tap_quad(
+            self._draw_or_defer_note_overlay(
                 painter,
+                note,
                 prev_x,
                 prev_y,
                 prev_w,
                 prev_scale,
                 end_color,
                 alpha // 2,
-                note,
                 prev_depth,
                 cell=prev_cell,
                 width=prev_width,

@@ -48,7 +48,7 @@ _AXES: tuple[RadarAxis, ...] = (
             NoteType.ADL,
             NoteType.ALD,
         ),
-        theme.qt(theme.NOTE_AIR_TRACE),
+        theme.qt(theme.NOTE_AIR_SLIDE_PATTERN),
     ),
     RadarAxis("FLICK", (NoteType.FLK,), theme.qt(theme.NOTE_FLICK)),
 )

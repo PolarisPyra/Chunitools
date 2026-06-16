@@ -39,9 +39,9 @@ from src.core.models import (
 )
 from src.notes import (
     AIR_ARROW_NOTE_TYPES,
-    AIR_CRUSH_NOTE_TYPES,
     AIR_HOLD_NOTE_TYPES,
     AIR_SLIDE_NOTE_TYPES,
+    AIR_SLIDE_PATTERN_NOTE_TYPES,
     PARSER_NOTE_TYPE_VALUES,
     SLIDE_NOTE_TYPES,
     AirSlide,
@@ -287,7 +287,7 @@ class C2sParser(IChartParser):
         self._air_arrows: list[tuple[NoteType, tuple[str, ...]]] = []
         self._air_path_notes: list[Note] = []
 
-        _air_path_types = AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_CRUSH_NOTE_TYPES
+        _air_path_types = AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_SLIDE_PATTERN_NOTE_TYPES
 
         for nt, args_tuple in self._raw_notes:
             args = list(args_tuple)
@@ -336,7 +336,7 @@ class C2sParser(IChartParser):
 
     def _is_generalized_air(self, note: Note) -> bool:
         return note.note_type in (
-            AIR_ARROW_NOTE_TYPES | AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_CRUSH_NOTE_TYPES
+            AIR_ARROW_NOTE_TYPES | AIR_HOLD_NOTE_TYPES | AIR_SLIDE_NOTE_TYPES | AIR_SLIDE_PATTERN_NOTE_TYPES
         )
 
     def _is_legal_air_previous(self, note: Note) -> bool:

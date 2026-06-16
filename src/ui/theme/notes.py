@@ -8,14 +8,14 @@ NOTE_HOLD = "#ff9000"
 NOTE_SLIDE = "#0090ff"
 NOTE_AIR = "#33ff55"
 NOTE_DOWN_AIR = "#ff33cc"
-NOTE_AIR_TRACE = "#ff00cc"
+NOTE_AIR_SLIDE_PATTERN = "#ff00cc"
 NOTE_AIR_SLIDE = "#34c759"
 NOTE_FLICK = "#d0d0d0"
 NOTE_MINE = "#af52de"
 NOTE_HOLD_EX_HEAD = "#ff9f1a"
 NOTE_SLIDE_HEAD = "#00ccff"
 NOTE_AIR_ACTION = "#d13bff"
-NOTE_AIR_CRUSH_CONTROL = "#7a27ff"
+NOTE_AIR_ACTION_PATTERN = "#7a27ff"
 NOTE_CYAN = "#00d5ff"
 
 NOTE_COLORS = {
@@ -34,7 +34,7 @@ NOTE_COLORS = {
     NoteType.ADW: (NOTE_DOWN_AIR, NOTE_DOWN_AIR),
     NoteType.ADR: (NOTE_DOWN_AIR, NOTE_DOWN_AIR),
     NoteType.ADL: (NOTE_DOWN_AIR, NOTE_DOWN_AIR),
-    NoteType.ALD: (NOTE_AIR_TRACE, NOTE_AIR_TRACE),
+    NoteType.ALD: (NOTE_AIR_SLIDE_PATTERN, NOTE_AIR_SLIDE_PATTERN),
     NoteType.ASD: (NOTE_AIR_SLIDE, NOTE_AIR_SLIDE),
     NoteType.ASC: (NOTE_AIR_SLIDE, NOTE_AIR_SLIDE),
     NoteType.AHX: (NOTE_AIR_ACTION, NOTE_AIR_ACTION),
@@ -60,5 +60,5 @@ def get_head_color(t: NoteType) -> QColor:
 def get_action_bar_color() -> QColor:
     return QColor(NOTE_AIR_ACTION)
 
-def get_air_crush_control_color() -> QColor:
-    return QColor(NOTE_AIR_CRUSH_CONTROL)
+def get_air_action_pattern_color() -> QColor:
+    return QColor(NOTE_AIR_ACTION_PATTERN)

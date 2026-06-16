@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QMenu
 
 from src.core.const import AirTraceColor, NoteType
 from src.core.editor import add_note, make_note, snap_abs_pos
-from src.notes import AirSlideStart, CrashSlide, Note, Slide
+from src.notes import AirSlidePattern, AirSlideStart, Note, Slide
 from src.ui import theme
 from src.ui.theme.notes import TRACE_COLORS, get_note_color
 
@@ -245,7 +245,7 @@ class NoteEditor:
             return
         if getattr(note, "color", None) == color_code:
             return
-        if not isinstance(note, CrashSlide):
+        if not isinstance(note, AirSlidePattern):
             return
         replacement = cast("Note", replace(note, color=color_code))
         self.slides.replace_note(note, replacement)

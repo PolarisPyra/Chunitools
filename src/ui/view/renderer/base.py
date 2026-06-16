@@ -355,8 +355,8 @@ class BaseRenderer(
                 render_tasks.append(RenderTask(38, resolved, note, tick))
 
         elif note_type == NoteType.ALD:
-            # Air crash/trace body — air foreground
-            render_tasks.append(RenderTask(60, self._draw_crash_slide_background, note, tick))
+            # ALD air slide pattern/effect body — air foreground
+            render_tasks.append(RenderTask(60, self._draw_air_slide_pattern_background, note, tick))
             render_tasks.append(RenderTask(65, self._draw_air_action_bar, note, tick))
 
         elif note_type in (NoteType.AHD, NoteType.AHX):

@@ -77,7 +77,7 @@ def format_render_behavior(note: Note, chart: Chart | None = None) -> str:  # no
         NoteType.HLD: "HOLD",
         NoteType.HXD: "HOLD",
         NoteType.AHD: "AIR HOLD",
-        NoteType.AHX: "AIR CRUSH CONTROL",
+        NoteType.AHX: "AIR HOLD",
     }
 
     if note_type in behavior_map:
@@ -89,7 +89,8 @@ def format_render_behavior(note: Note, chart: Chart | None = None) -> str:  # no
     elif note_type in {NoteType.ASD, NoteType.ASC}:
         behavior = "AIR SLIDE"
     elif note_type == NoteType.ALD:
-        behavior = "AIR CRUSH"
+        color = getattr(note, "color", "DEF")
+        behavior = "AIR-ACTION" if color == "NON" else "AIR SLIDE PATTERN"
     elif note_type in _AIR_DIRECTION_BEHAVIOR:
         behavior = _AIR_DIRECTION_BEHAVIOR[note_type]
     else:

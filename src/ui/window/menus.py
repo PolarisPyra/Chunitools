@@ -267,7 +267,7 @@ def create_menu_bar(window: MainWindow) -> None:  # noqa: PLR0915
             NoteType.ASD: note_type_display_name(NoteType.ASD),
             NoteType.ASC: note_type_display_name(NoteType.ASC),
         },
-        "Air Crush": {
+        "Air Slide Patterns": {
             NoteType.ALD: note_type_display_name(NoteType.ALD),
         },
     }

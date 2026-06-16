@@ -53,7 +53,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 │   │   ├── hold.py             # Hold
 │   │   ├── slide.py            # Slide, SlideTo
 │   │   ├── flick.py            # Flick
-│   │   ├── air.py              # Air, AirHold, AirHoldStart, AirSlide, AirSlideStart, CrashSlide
+│   │   ├── air.py              # Air, AirHold, AirHoldStart, AirSlide, AirSlideStart, AirSlidePattern
 │   │   ├── effects.py          # AirSolid, HeavenHold
 │   │   ├── geometry.py         # note_duration, note_end_cell, steps helpers
 │   │   ├── factory.py          # Parser + editor note construction, dispatch
@@ -152,7 +152,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 - Holds: `HLD`, `HXD` (ExTap head hold)
 - Slides: `SLD`, `SLC` (control point), `SXD` (ExTap head slide), `SXC` (ExTap control point)
 - Air: `AIR`, `AUR`, `AUL`, `ADW`, `ADR`, `ADL` (arrows), `AHD` (hold), `AHX` (purple action on hold)
-- Air effects: `ALD` (air trace/crush), `ASD`/`ASC` (air slide wrapper/control), `ASX` (air slide action), `ASO` (air solid)
+- Air effects: `ALD` (air slide pattern/effect carrier; `NON` = AIR-ACTION), `ASD`/`ASC` (air slide wrapper/control), `ASX` (air slide action), `ASO` (air solid)
 - Heaven: `HHD`, `HHX`
 
 **Key models** (in `src/core/models.py`):
@@ -179,7 +179,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 - **Note construction:** `src/notes/schema.py` defines per-`NoteType` parse fields; `src/notes/factory.py` owns explicit parse/build dispatch. Keep note construction explicit; do not use `**base`, `**extras`, or `**kwargs` splatting.
 - **Timeline renderer:** `src/ui/view/chart_renderer.py` orchestrates the 2D renderer stack. The interactive viewport and 2D note renderer mixins live in `src/ui/components/timeline_view/`, including `timeline_view/notes/`.
 - **3D play renderer:** `src/ui/components/play_view/` is the 3D package. `view.py` owns the QWidget shell, `playfield.py` owns field/judge/scrubber drawing, `geometry.py` owns projection and clipping math, and `notes/` owns per-category 3D note rendering.
-- **3D clipping rule:** sustain, slide, air hold, air slide, and air trace bodies must clip in chart-space before projection. Do not clamp depth alone; interpolate cell/width/height at the clipped depth to avoid folded/compressed slide bodies.
+- **3D clipping rule:** sustain, slide, air hold, air slide, and ALD air slide pattern bodies must clip in chart-space before projection. Do not clamp depth alone; interpolate cell/width/height at the clipped depth to avoid folded/compressed slide bodies.
 - **Air wrapped ground heads:** `AIR_WRAPPED_GROUND_TYPES` in `play_view/notes/air.py` is renderer terminology for ground-style heads drawn under air paths. It is not a separate C2S note category.
 
 ### Key architectural patterns
@@ -210,6 +210,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
 ### Architecture & naming conventions
 
 - **No backward compatibility.** This project is in active development. When code is renamed or restructured, old names are removed completely — no aliases, no deprecation shims, no `# legacy` comments. The codebase is cleaned up as if the old names never existed.
+- **Never guess.** Implementation choices must be tied to explicit user requirements, parsed data, source code, documented behavior, or verified observations. If a value or behavior is uncertain, inspect the relevant source/artifact or state the uncertainty instead of inventing tuned constants or assumptions.
 - **No fallback inference.** Do not silently guess note anchors, note types, paths, or renderer geometry from nearby notes, matching cells, filenames, or target strings. Use explicit parsed data and object links only; if data is missing or ambiguous, leave it unresolved and surface the issue.
 - **No `**kwargs` or `**dict` splatting** in constructor/factory calls. Every keyword argument is explicitly named at every call site.
 - **Note type groupings must match game-engine categories.** The game's internal classification is:
@@ -221,7 +222,7 @@ A high-performance CHUNITHM (SEGA arcade rhythm game) chart parser, viewer, and 
   - `AIR_ARROW` = AIR, AUR, AUL, ADW, ADR, ADL
   - `AIR_HOLD` = AHD, AHX
   - `AIR_SLIDE` = ASD, ASC, ASX
-  - `AIR_TRACE` = ALD
+  - `AIR_SLIDE_PATTERN` = ALD (`NON` color renders AIR-ACTION)
   - `AIR_SOLID` = ASO
   - `HEAVEN` = HHD, HHX
 - The Note dataclass at `notes/base.py` provides `serialize()` and the abstract `get_extra_parts()` contract. Construction logic lives in `notes/factory.py` with explicit per-type parse/build functions — no `**base`, no `**extras`.

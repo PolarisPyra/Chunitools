@@ -20,10 +20,10 @@ NOTE_TYPE_DISPLAY_NAMES: dict[NoteType, str] = {
     NoteType.ADR: "Air down right",
     NoteType.ADL: "Air down left",
     NoteType.AHD: "Air Hold",
-    NoteType.AHX: "Air crush control",
+    NoteType.AHX: "Air Hold",
     NoteType.ASD: "Air Slide",
     NoteType.ASC: "Air Slide",
-    NoteType.ALD: "Air Crush",
+    NoteType.ALD: "Air Slide Pattern",
 }
 
 NOTE_TYPE_SHORT_NAMES: dict[NoteType, str] = {
@@ -44,10 +44,10 @@ NOTE_TYPE_SHORT_NAMES: dict[NoteType, str] = {
     NoteType.ADR: "AIR DOWN RIGHT",
     NoteType.ADL: "AIR DOWN LEFT",
     NoteType.AHD: "AIR HOLD",
-    NoteType.AHX: "AIR CRUSH CONTROL",
+    NoteType.AHX: "AIR HOLD",
     NoteType.ASD: "AIR SLIDE",
     NoteType.ASC: "AIR SLIDE",
-    NoteType.ALD: "AIR CRUSH",
+    NoteType.ALD: "AIR SLIDE PATTERN",
 }
 
 

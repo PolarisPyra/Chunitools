@@ -58,8 +58,7 @@ class NoteType(str, enum.Enum):
     """Air Down-Left."""
 
     ALD = "ALD"
-    """Air trace — crushed/trail elements between air points; color NON creates
-    AIR-ACTION/AIR-CRUSH objects."""
+    """Air slide pattern/effect carrier. Color NON creates AIR-ACTION bars."""
 
     ASD = "ASD"
     """Air slide head — start of a sliding path in the air."""
@@ -125,7 +124,7 @@ class AirColor(enum.Enum):
 
 
 class AirTraceColor(enum.Enum):
-    """Color types for ALD (Air Crush / Trace) notes."""
+    """Color/effect types for ALD air slide pattern notes."""
 
     GRY = "GRY"
     RED = "RED"
@@ -196,20 +195,20 @@ AIR_SLIDE_NOTES: frozenset[NoteType] = frozenset([NoteType.ASD, NoteType.ASC])
 AIR_ACTION_NOTES: frozenset[NoteType] = frozenset([NoteType.AHX])
 """Air action notes represented directly by supported C2S."""
 
-AIR_TRACE_NOTES: frozenset[NoteType] = frozenset({NoteType.ALD})
-"""Air crush / trace notes represented by ALD."""
+AIR_SLIDE_PATTERN_NOTES: frozenset[NoteType] = frozenset({NoteType.ALD})
+"""Air slide pattern/effect carrier notes represented by ALD."""
 
 # All air-related notes combined (useful for broad "is this air?" checks)
 AIR_NOTE_TYPES: frozenset[NoteType] = frozenset(
     set(AIR_ARROW_NOTES)
     | set(AIR_HOLD_NOTES)
     | set(AIR_SLIDE_NOTES)
-    | set(AIR_TRACE_NOTES)
+    | set(AIR_SLIDE_PATTERN_NOTES)
 )
 
 # ── Other constants ────────────────────────────────────────────────────────
 
-AIR_TRACE_COLORS: frozenset[str] = frozenset(
+AIR_SLIDE_PATTERN_COLORS: frozenset[str] = frozenset(
     {
         "DEF",
         "NON",

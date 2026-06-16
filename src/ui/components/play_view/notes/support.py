@@ -48,6 +48,44 @@ AIR_WRAPPED_EX_HEAD_TYPES = {NoteType.CHR, NoteType.HXD, NoteType.SXD, NoteType.
 
 
 class PlayViewSupportNotesMixin:
+    def _note_render_priority(self, note: Note) -> int:
+        if note.note_type == NoteType.FLK:
+            return 1
+        return 0
+
+    def _draw_or_defer_note_overlay(
+        self,
+        painter: QPainter,
+        note: Note,
+        x: float,
+        y: float,
+        w: float,
+        scale: float,
+        color: QColor,
+        alpha: int,
+        depth: float,
+        cell: float,
+        width: float,
+    ) -> None:
+        if getattr(self, "_defer_note_overlays", False):
+            self._deferred_note_overlays.append(
+                (note, x, y, w, scale, color, alpha, depth, cell, width)
+            )
+            return
+        self._draw_tap_quad(
+            painter,
+            x,
+            y,
+            w,
+            scale,
+            color,
+            alpha,
+            note,
+            depth,
+            cell=cell,
+            width=width,
+        )
+
     def _air_endpoint_candidates(self) -> tuple[Note, ...]:
         candidates: list[Note] = []
         for note in self._notes:
@@ -204,7 +242,7 @@ class PlayViewSupportNotesMixin:
                 judge_y,
             )
         elif note_type == NoteType.ALD:
-            self._draw_air_trace(
+            self._draw_air_slide_pattern(
                 painter,
                 note,
                 x,
@@ -250,10 +288,13 @@ class PlayViewSupportNotesMixin:
 
             visible_notes.append((note, depth, end_depth))
 
-        visible_notes.sort(key=lambda x: x[1], reverse=True)
+        visible_notes.sort(key=lambda x: (x[1], -self._note_render_priority(x[0])), reverse=True)
 
         self._deferred_air_arrows.clear()
+        self._deferred_note_overlays.clear()
+        self._deferred_flick_overlays.clear()
         self._defer_air_arrows = True
+        self._defer_note_overlays = True
         try:
             for note, depth, end_depth in visible_notes:
                 if _has_sustain(note):
@@ -289,7 +330,38 @@ class PlayViewSupportNotesMixin:
                 )
         finally:
             self._defer_air_arrows = False
+            self._defer_note_overlays = False
 
+        for note, x, y, note_w, scale, color, alpha, depth, cell, width in self._deferred_note_overlays:
+            self._draw_tap_quad(
+                painter,
+                x,
+                y,
+                note_w,
+                scale,
+                color,
+                alpha,
+                note,
+                depth,
+                cell=cell,
+                width=width,
+            )
+        self._deferred_note_overlays.clear()
+        for note, x, y, note_w, scale, color, alpha, depth, cell, width in self._deferred_flick_overlays:
+            self._draw_flick(
+                painter,
+                x,
+                y,
+                note_w,
+                scale,
+                color,
+                alpha,
+                note,
+                depth,
+                cell=cell,
+                width=width,
+            )
+        self._deferred_flick_overlays.clear()
         for payload in self._deferred_air_arrows:
             self._draw_air_arrow_for_note(painter, *payload)
         self._deferred_air_arrows.clear()

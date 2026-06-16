@@ -28,6 +28,11 @@ class PlayViewFlickNotesMixin:
     ) -> None:
         if not _depth_in_draw_range(depth):
             return
+        if getattr(self, "_defer_note_overlays", False):
+            self._deferred_flick_overlays.append(
+                (note, x, y, w, scale, color, alpha, depth, cell, width)
+            )
+            return
         c_val = cell if cell is not None else float(note.cell)
         w_val = width if width is not None else float(note.width)
         corners = self._project_flat_note_corners(note, c_val, w_val, depth)
@@ -52,4 +57,3 @@ class PlayViewFlickNotesMixin:
             QPointF(center.x() - dx, center.y() + dy),
             QPointF(center.x() + dx, center.y()),
         )
-

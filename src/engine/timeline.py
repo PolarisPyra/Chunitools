@@ -363,7 +363,7 @@ class ChartTimeline:
                     f"ALD at {note.measure}:{note.offset} "
                     f"(cell={note.cell}, width={note.width}) has "
                     f"crush_interval={crush_interval} but duration={duration}; "
-                    f"no crush elements will be drawn"
+                    f"no ALD action pattern elements will be drawn"
                 )
 
         return None

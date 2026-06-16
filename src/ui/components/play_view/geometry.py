@@ -32,11 +32,11 @@ NOTE_LANE_GAP_PX = 3.0
 RENDER_NOTE_DEPTH = 108.56
 RENDER_BIG_NOTE_DEPTH = 118.0 * 1.13
 RENDER_AIR_HEIGHT = 233.0
-RENDER_AIR_TRACE_HEIGHT = 466.0
+RENDER_AIR_SLIDE_PATTERN_HEIGHT = 466.0
 RENDER_CHART_AIR_HEIGHT_MIN = 1.0
 RENDER_CHART_AIR_HEIGHT_RANGE = 4.0
 RENDER_CHART_AIR_HEIGHT_STEPS = 8.0
-RENDER_AIR_TRACE_WIDTH_HEIGHT_SLOPE = -0.25
+RENDER_AIR_SLIDE_PATTERN_WIDTH_HEIGHT_SLOPE = -0.25
 AIR_ARROW_WIDTH_SCALE = 1.25
 AIR_ARROW_HEIGHT_SCALE = 72.0
 AIR_ARROW_ANCHOR_OFFSET = 5.0
@@ -242,19 +242,19 @@ def _air_action_world_y_from_g0(g0: float) -> float:
     return (g0 / 16.0) * 2.0 * RENDER_AIR_HEIGHT - RENDER_AIR_HEIGHT
 
 
-def _air_trace_world_y_from_g0(g0: float) -> float:
-    return (RENDER_AIR_TRACE_HEIGHT * g0) / 16.0
+def _air_slide_pattern_world_y_from_g0(g0: float) -> float:
+    return (RENDER_AIR_SLIDE_PATTERN_HEIGHT * g0) / 16.0
 
 
-def _air_trace_width_factor_from_g0(g0: float) -> float:
-    return max(0.0, RENDER_AIR_TRACE_WIDTH_HEIGHT_SLOPE * (g0 / 16.0) + 1.0)
+def _air_slide_pattern_width_factor_from_g0(g0: float) -> float:
+    return max(0.0, RENDER_AIR_SLIDE_PATTERN_WIDTH_HEIGHT_SLOPE * (g0 / 16.0) + 1.0)
 
 
-def _air_trace_width_factor_from_world_y(world_y: float | None) -> float:
+def _air_slide_pattern_width_factor_from_world_y(world_y: float | None) -> float:
     if world_y is None:
         return 1.0
-    g0 = world_y / RENDER_AIR_TRACE_HEIGHT * 16.0
-    return _air_trace_width_factor_from_g0(g0)
+    g0 = world_y / RENDER_AIR_SLIDE_PATTERN_HEIGHT * 16.0
+    return _air_slide_pattern_width_factor_from_g0(g0)
 
 
 def _air_action_world_y_from_chart_height(height: float) -> float:
@@ -272,10 +272,10 @@ def _air_path_world_y(note: Note, *, end: bool = False) -> float | None:
     attr = "target_height" if end else "starting_height"
     if hasattr(source, attr):
         g0 = _chart_air_height_to_g0(float(getattr(source, attr)))
-        return _air_trace_world_y_from_g0(g0)
+        return _air_slide_pattern_world_y_from_g0(g0)
     if note.note_type in (NoteType.AHD, NoteType.AHX):
         g0 = 4.0
-        return _air_trace_world_y_from_g0(g0)
+        return _air_slide_pattern_world_y_from_g0(g0)
     # Air arrows sit just above the ground note they're anchored to,
     # not at the top of the stem. Use minimum air lane (g0=0, chart height 1.0)
     if note.note_type in {
@@ -286,7 +286,7 @@ def _air_path_world_y(note: Note, *, end: bool = False) -> float | None:
         NoteType.ADR,
         NoteType.ADL,
     }:
-        return _air_trace_world_y_from_g0(0.0)
+        return _air_slide_pattern_world_y_from_g0(0.0)
     return None
 
 

@@ -10,7 +10,7 @@ from src.core.const import AIR_ARROW_NOTES, GROUND_NOTE_TYPES, NoteType
 from src.notes.air import AirSlideStart
 from src.ui.components.timeline_view.notes.support import RendererMixinSupport
 from src.ui.theme.color_profile import GradientColor
-from src.ui.theme.notes import get_action_bar_color, get_air_crush_control_color, get_note_color
+from src.ui.theme.notes import get_action_bar_color, get_air_action_pattern_color, get_note_color
 from src.ui.view import timeline_compat
 
 NOTE_DEBUG = logging.getLogger("note_rendering_debug")
@@ -306,7 +306,7 @@ class AirRendererMixin(RendererMixinSupport):
             path.cubicTo(cp1, cp2, p2)
         painter.strokePath(path, painter.pen())
 
-    def _draw_crash_slide_background(
+    def _draw_air_slide_pattern_background(
         self,
         painter: QPainter,
         note: Any,
@@ -410,22 +410,22 @@ class AirRendererMixin(RendererMixinSupport):
                 self._draw_air_arrow_head(painter, note, x_pos, y_pos, width, color)
 
         is_action = self._air_hold_step_role(note, timeline) == NOTE_ROLE_ACTION
-        is_crush = False
+        has_action_pattern_elements = False
 
         if not is_action:
             if note.note_type == NoteType.ALD:
-                is_crush = getattr(note, "crush_interval", 0) > 0
+                has_action_pattern_elements = getattr(note, "crush_interval", 0) > 0
             else:
                 is_action = False
 
-        if is_crush:
-            self._draw_air_crush_elements(painter, note, current_position, timeline)
+        if has_action_pattern_elements:
+            self._draw_air_action_pattern_elements(painter, note, current_position, timeline)
         elif note.note_type in (NoteType.AHD, NoteType.AHX):
             self._draw_air_end_bar(painter, note, current_position, timeline)
         elif is_action:
             self._draw_air_joint_bar(painter, note, current_position, timeline)
 
-    def _draw_air_crush_elements(
+    def _draw_air_action_pattern_elements(
         self,
         painter: QPainter,
         note: Any,
@@ -438,7 +438,7 @@ class AirRendererMixin(RendererMixinSupport):
             return
         start_tick = timeline.note_tick(note)
         res = timeline.resolution
-        control_color = get_air_crush_control_color()
+        control_color = get_air_action_pattern_color()
         for offset_tick in range(0, duration + 1, crush_interval):
             current_abs_tick = start_tick + offset_tick
             progress = offset_tick / duration if duration > 0 else 0
