@@ -224,24 +224,21 @@ class _WavePcmStream:
 
 
 class _FlacPcmStream:
-    """Decode FLAC files with pyFLAC into seekable interleaved signed 16-bit frames."""
+    """Decode FLAC files with libsndfile into seekable interleaved signed 16-bit frames."""
 
     def __init__(self, source_path: Path) -> None:
         try:
             import numpy as np  # noqa: PLC0415
-            import pyflac  # noqa: PLC0415
             import soundfile as sf  # noqa: PLC0415
         except ImportError as exc:
             raise AudioSourceError(
-                "could not import pyFLAC; install pyflac to play FLAC custom audio"
+                "could not import soundfile; install soundfile to play FLAC custom audio"
             ) from exc
 
         try:
             info = sf.info(source_path)
-            if info.subtype in {"PCM_16", "PCM_32"}:
-                audio, sample_rate = pyflac.FileDecoder(source_path).process()
-            else:
-                audio, sample_rate = sf.read(source_path, always_2d=True, dtype="float64")
+            dtype = _soundfile_dtype_for_subtype(info.subtype)
+            audio, sample_rate = sf.read(source_path, always_2d=True, dtype=dtype)
         except Exception as exc:
             raise AudioSourceError(f"could not read FLAC file {source_path}: {exc}") from exc
 
@@ -331,6 +328,14 @@ def _numpy_audio_to_int16(samples: Any) -> Any:
     else:
         scaled = samples
     return np.ascontiguousarray(np.clip(scaled, -32768, 32767).astype(np.int16))
+
+
+def _soundfile_dtype_for_subtype(subtype: str) -> str:
+    if subtype == "PCM_16":
+        return "int16"
+    if subtype in {"PCM_24", "PCM_32"}:
+        return "int32"
+    return "float64"
 
 
 def _clamp_int16(sample: int) -> int:

@@ -1,6 +1,6 @@
 # Chunitools
 
-A high-performance CHUNITHM chart parser, viewer, and editor built with Python 3.10+ and PySide6 (Qt6).
+A high-performance CHUNITHM chart parser, viewer, and editor built with Python 3.10-3.13 and PySide6 (Qt6).
 
 ## Quick start
 
@@ -15,13 +15,21 @@ uv run python src/main.py
 uv run pytest
 ```
 
+The repository includes a `.python-version` file so `uv` uses Python 3.13 by default.
+Python 3.14 is not currently supported because some audio dependencies do not publish
+compatible Windows wheels yet.
+
+Custom WAV, MP3, FLAC, and AWB music playback works on Windows without Visual Studio
+Build Tools. FLAC decoding uses `soundfile`/libsndfile instead of `pyflac`, avoiding a
+local C/C++ extension build during setup.
+
 ## Building a standalone executable
 
 The project uses **PyInstaller** to build a single-file executable that bundles everything (Python, Qt, and vgmstream).
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.10-3.13
 - [uv](https://docs.astral.sh/uv/) (package manager)
 
 ### Build for your platform
